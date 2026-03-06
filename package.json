@@ -1,0 +1,50 @@
+{
+  "name": "@isaacs/nonrecursive-glob-match",
+  "description": "a single-path-portion glob matcher not subject to recursive backtracking ReDoS",
+  "version": "0.0.0",
+  "license": "BlueOak-1.0.0",
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "prettier": "^3.8.1",
+    "tap": "^21.6.2",
+    "tshy": "^3.3.2",
+    "typedoc": "^0.28.17"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "test": "tap",
+    "snap": "tap",
+    "typedoc": "typedoc",
+    "pretest": "npm run prepare",
+    "presnap": "npm run prepare",
+    "prepare": "tshy && bash scripts/build.sh",
+    "preversion": "npm test",
+    "postversion": "npm publish",
+    "prepublishOnly": "git push origin --follow-tags"
+  },
+  "type": "module",
+  "tshy": {
+    "selfLink": false,
+    "compiler": "tsgo",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    }
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}
