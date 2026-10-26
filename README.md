@@ -17,6 +17,10 @@ console.log(m.test('abcax')) // true
 console.log(m.test('aa')) // true
 ```
 
+The pattern and the tested string must be a single path portion.
+If either one contains a `/` character, the matcher throws an
+error.
+
 ## Why
 
 Patterns like this frustrate most glob matchers: `a*a*a*a*a*a*a`.
@@ -174,6 +178,24 @@ inside the negation, and it needs to match anything at all, as
 long as it _doesn't_ match one of the supplied patterns. This is
 where it gets complicated, and past attempts have run into
 problems.
+
+## Differences from Bash
+
+Bash 5 is the reference for this module, with one known
+deviation for dotfiles.
+
+If `dot` is not set, a string that starts with `.` only matches
+if a literal `.` in the pattern matches that first character.
+Extglobs before that `.` can match the empty string, and the
+pattern can still match. For example, `!(.a|js)@(.*)` matches
+`.a`, `.a.js`, and `.js`, because `!(.a|js)` matches the empty
+string, and `@(.*)` matches the rest. Bash does not match these
+dotfiles. See [this bug
+report](https://lists.gnu.org/archive/html/bug-bash/2026-03/msg00034.html).
+
+A `*` can never match at the start of a dotfile, even if it
+matches the empty string. So, `*.js` does not match `.js`, as in
+Bash.
 
 ## Algorithm
 
