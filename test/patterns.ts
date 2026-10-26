@@ -490,7 +490,7 @@ for (const c of patterns) {
   const [pattern, expect, matcherOptions, f = files, testOptions = {}] = c
   t.test(pattern, testOptions, t => {
     const matcher = new Matcher(pattern, matcherOptions)
-    t.matchSnapshot(matcher, 'parsed matcher')
+    t.matchSnapshot(String(matcher), 'parsed matcher')
     const actual: string[] = f.filter(file => matcher.test(file))
     t.strictSame(new Set(actual), new Set(expect), {
       pattern,

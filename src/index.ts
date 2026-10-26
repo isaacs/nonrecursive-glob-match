@@ -156,6 +156,41 @@ const compile = (items: Item[], nocase: boolean): Node => {
   return seq(items, MATCH)
 }
 
+// one line per node, in the order that a walk from the start
+// reaches them. Edges point to node ids. The nodes of a negated
+// sub-pattern are indented under their negation.
+const show = (start: Node): string => {
+  const lines: string[] = []
+  const seen = new Set<Node>()
+  const ref = (n: Node) => (n.t === 'match' ? 'match' : String(n.id))
+  const walk = (n: Node, indent: string) => {
+    if (n.t === 'match' || seen.has(n)) return
+    seen.add(n)
+    const line = (desc: string) => lines.push(`${indent}${n.id}: ${desc}`)
+    switch (n.t) {
+      case 'split':
+        line(`split -> ${n.out.map(ref).join(', ')}`)
+        for (const o of n.out) walk(o, indent)
+        return
+      case 'neg':
+        line(`!(${ref(n.sub)}) -> ${ref(n.next)}`)
+        walk(n.sub, indent + '  ')
+        return walk(n.next, indent)
+      case 'lit':
+        line(`${JSON.stringify(n.ch)} -> ${ref(n.next)}`)
+        break
+      case 'class':
+        line(`${n.re} -> ${ref(n.next)}`)
+        break
+      default:
+        line(`${n.t === 'any' ? '?' : '*'} -> ${ref(n.next)}`)
+    }
+    walk(n.next, indent)
+  }
+  walk(start, '')
+  return [`start -> ${ref(start)}`, ...lines].join('\n')
+}
+
 // A thread inside a !(...) negation. It holds the threads of the
 // negated sub-pattern, started where the negation started. The
 // negation matches the chars so far if the sub-pattern does not.
@@ -293,5 +328,10 @@ export class Matcher {
       state = sim.step(state, i, true)
     }
     return state.threads.has(MATCH_KEY)
+  }
+
+  /** a readable listing of the state machine */
+  toString(): string {
+    return show(this.#start)
   }
 }
