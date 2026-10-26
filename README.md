@@ -167,7 +167,7 @@ Previous (failed) attempt:
 >   +--> e3 ----->+
 >   v   ...       ^
 > ```
-> 
+>
 > If the EVAL node gets a match from any of the bottom
 > <code>e<i>n</i></code> subexpression inputs, then it kills the
 > corresponding match from the top `*` input.

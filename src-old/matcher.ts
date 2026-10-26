@@ -18,7 +18,11 @@ const addToMapSet = <K, V>(map: Map<K, Set<V>>, k: K, v: V) => {
   else map.set(k, new Set([v]))
 }
 
-const pruneRemoveNode = (node: Node, from: Map<Node, Set<Node | null>>, nodes: Set<Node | null>): void => {
+const pruneRemoveNode = (
+  node: Node,
+  from: Map<Node, Set<Node | null>>,
+  nodes: Set<Node | null>,
+): void => {
   debug('PRN %s', node)
   from.delete(node)
   nodes.delete(node)
@@ -30,7 +34,11 @@ const pruneRemoveNode = (node: Node, from: Map<Node, Set<Node | null>>, nodes: S
   }
 }
 
-const pruneEvalFailed = (nodes: Set<Node | null>, from: Map<Node, Set<Node | null>>, seen = new Set<Set<Node | null>>()): void => {
+const pruneEvalFailed = (
+  nodes: Set<Node | null>,
+  from: Map<Node, Set<Node | null>>,
+  seen = new Set<Set<Node | null>>(),
+): void => {
   if (!nodes.size || seen.has(nodes)) return
   seen.add(nodes)
 
@@ -89,7 +97,11 @@ export class Matcher {
 
       // walk up to tests, tracking evals and from steps
       for (const node of walk) {
-        debug('STEP %s', node, [...(from.get(node)??new Set)].map(String))
+        debug(
+          'STEP %s',
+          node,
+          [...(from.get(node) ?? new Set())].map(String),
+        )
         s(node)
         if (!from.has(node)) addToMapSet(from, node, null)
 
@@ -105,7 +117,13 @@ export class Matcher {
         }
       }
 
-      debug('post walk, pre prune', [...tests].map(String), Object.fromEntries([...from].map(([n, f]) => [String(n), [...f].map(String)])))
+      debug(
+        'post walk, pre prune',
+        [...tests].map(String),
+        Object.fromEntries(
+          [...from].map(([n, f]) => [String(n), [...f].map(String)]),
+        ),
+      )
 
       // now tests has all the test nodes we could walk to, *including*
       // by walking past eval nodes that may evaluate false.
@@ -113,7 +131,13 @@ export class Matcher {
       // them that doesn't pass through a failed eval.
       pruneEvalFailed(tests, from)
 
-      debug('post prune', [...tests].map(String), Object.fromEntries([...from].map(([n, f]) => [String(n), [...f].map(String)])))
+      debug(
+        'post prune',
+        [...tests].map(String),
+        Object.fromEntries(
+          [...from].map(([n, f]) => [String(n), [...f].map(String)]),
+        ),
+      )
 
       // now the tests are only those that are reachable without passing
       // through a failed eval

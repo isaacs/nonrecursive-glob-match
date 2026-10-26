@@ -19,10 +19,7 @@ export type Item =
 // extglob syntax tokens become literals if they are not part of a
 // closed extglob
 export type Token =
-  | Item
-  | { t: 'open'; type: string }
-  | { t: 'bar' }
-  | { t: 'close' }
+  Item | { t: 'open'; type: string } | { t: 'bar' } | { t: 'close' }
 
 // state machine nodes
 export type NegNode = { t: 'neg'; id: number; sub: Node; next: Node }
@@ -45,7 +42,7 @@ const lit = (ch: string): Item => ({ t: 'lit', ch })
 
 const tokenize = (p: string, nocase: boolean, noext: boolean) => {
   const toks: Token[] = []
-  for (let i = 0; i < p.length; ) {
+  for (let i = 0; i < p.length;) {
     const c = String.fromCodePoint(p.codePointAt(i)!)
     if (c === '\\') {
       // a trailing \ is a literal \

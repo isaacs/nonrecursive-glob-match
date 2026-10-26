@@ -166,7 +166,7 @@ export class NodeExtNeg extends Node implements NodeExt {
   eval = new NodeEvalNegation()
   constructor(subs: string[], options: MatcherOptions) {
     super()
-    this.eval.name = '<NegEval '+this.id+' '+subs.join('|')+'>'
+    this.eval.name = '<NegEval ' + this.id + ' ' + subs.join('|') + '>'
     const subStar = new Node()
     subStar.name = '<Neg *' + this.id + '>'
     const negPass = new Node()

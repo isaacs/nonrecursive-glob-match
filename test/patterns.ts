@@ -18,7 +18,7 @@ export let files = [
   'de',
 ]
 
-export const patterns:(
+export const patterns: (
   | string
   | (() => unknown)
   | [p: string, m: string[], mo?: MatcherOptions, f?: string[]]
@@ -103,12 +103,7 @@ export const patterns:(
   'nocase tests',
   ['XYZ', ['xYz'], { nocase: true }, ['xYz', 'ABC', 'IjK']],
   ['ab*', ['ABC'], { nocase: true }, ['xYz', 'ABC', 'IjK']],
-  [
-    '[ia]?[ck]',
-    ['ABC', 'IjK'],
-    { nocase: true },
-    ['xYz', 'ABC', 'IjK'],
-  ],
+  ['[ia]?[ck]', ['ABC', 'IjK'], { nocase: true }, ['xYz', 'ABC', 'IjK']],
 
   'dots should not match unless requested',
   ['*', ['a'], {}, ['a', '.d', '.a']],
@@ -294,7 +289,18 @@ export const patterns:(
   ['*', ['a', 'a.js', 'js', 'a.JS', 'JS']],
   [
     '*',
-    ['.a', '.a.js', '.js', 'a', 'a.js', 'js', 'a.JS', '.a.JS', '.JS', 'JS'],
+    [
+      '.a',
+      '.a.js',
+      '.js',
+      'a',
+      'a.js',
+      'js',
+      'a.JS',
+      '.a.JS',
+      '.JS',
+      'JS',
+    ],
     { dot: true },
   ],
 
@@ -327,7 +333,18 @@ export const patterns:(
 
   'fast track the *.ext patterns',
   () =>
-    (files = ['x.y', 'a.y', 'x.z', 'a.z', 'xy', 'ay', 'x', 'a', '.y', '.z']),
+    (files = [
+      'x.y',
+      'a.y',
+      'x.z',
+      'a.z',
+      'xy',
+      'ay',
+      'x',
+      'a',
+      '.y',
+      '.z',
+    ]),
   ['*.y', ['x.y', 'a.y']],
   ['*.z', ['x.z', 'a.z', '.z'], { dot: true }],
   ['*.Y', ['x.y', 'a.y'], { nocase: true }],
@@ -470,7 +487,7 @@ for (const c of patterns) {
     c()
     continue
   }
-  const [ pattern, expect, matcherOptions, f = files, testOptions = {}] = c
+  const [pattern, expect, matcherOptions, f = files, testOptions = {}] = c
   t.test(pattern, testOptions, t => {
     const matcher = new Matcher(pattern, matcherOptions)
     t.matchSnapshot(matcher, 'parsed matcher')
