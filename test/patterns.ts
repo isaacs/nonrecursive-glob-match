@@ -1,6 +1,6 @@
-import type { MatcherOptions } from '../src/node.js'
+import type { MatcherOptions } from '../src/index.js'
 import t from 'tap'
-import { Matcher } from '../src/matcher.js'
+import { Matcher } from '../src/index.js'
 
 export let files = [
   'a',

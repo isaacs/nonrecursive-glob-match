@@ -146,25 +146,34 @@ character at a time.)
 
 "Negative" extglob.
 
-```
---+-->+-----------+-->+------+
-  |   v           ^   |      |
-  |   +<----------+   | EVAL |-->
-  |   v           ^   |      |
-  |   +--> any -->+   +------+
-  |                      ^
-  v                      |
-  +--> e1 ----->+------->+
-  v             ^
-  +--> e2 ----->+
-  v             ^
-  +--> e3 ----->+
-  v   ...       ^
-```
+Previous (failed) attempt:
 
-If the EVAL node gets a match from any of the bottom
-<code>e<i>n</i></code> subexpression inputs, then it kills the
-corresponding match from the top `*` input.
+> ```
+> --+-->+-----------+-->+------+
+>   |   v           ^   |      |
+>   |   +<----------+   | EVAL |-->
+>   |   v           ^   |      |
+>   |   +--> any -->+   +------+
+>   |                      ^
+>   v                      |
+>   +--> e1 ----->+------->+
+>   v             ^
+>   +--> e2 ----->+
+>   v             ^
+>   +--> e3 ----->+
+>   v   ...       ^
+> ```
+> 
+> If the EVAL node gets a match from any of the bottom
+> <code>e<i>n</i></code> subexpression inputs, then it kills the
+> corresponding match from the top `*` input.
+
+The challenge with negation is that it opens the door to a whole
+heap of edge cases. Especially, _any_ expression can be nested
+inside the negation, and it needs to match anything at all, as
+long as it _doesn't_ match one of the supplied patterns. This is
+where it gets complicated, and past attempts have run into
+problems.
 
 ## Algorithm
 
@@ -172,7 +181,8 @@ A glob pattern is parsed and compiled into a series of attached
 state machines.
 
 For example, the glob patttern `*(a|[c-d]|+(x|y|z))z` would
-compile to a state machine matching the following flow diagram:
+compile to a state machine something like the following flow
+diagram:
 
 ```
 -->+----------------------->+-->8 LITERAL(z)-->9 end

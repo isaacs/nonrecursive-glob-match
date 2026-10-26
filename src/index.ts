@@ -1,29 +1,24 @@
-export { Matcher } from './matcher.js'
-export type {
-  ExtGlobType,
-  Node,
-  NodeTest,
-  NodeExt,
-  MatcherOptions,
-} from './node.js'
-export {
-  isEvalNegationNode,
-  isExtNode,
-  isExtType,
-  isTestNode,
-  NodeChar,
-  NodeCharNoCase,
-  NodeEvalNegation,
-  NodeExit,
-  NodeExtAt,
-  NodeExtNeg,
-  NodeExtPlus,
-  NodeExtQmark,
-  NodeExtStar,
-  NodeQmark,
-  NodeQmarkDot,
-  NodeRE,
-  NodeStar,
-  NodeStarDot,
-} from './node.js'
-export { State } from './state.js'
+export type MatcherOptions = {
+  /** perform a case-insensitive match */
+  nocase?: boolean
+  /** do not treat strings starting with `.` specially */
+  dot?: boolean
+  /** do not match extglobs (treat them as normal strings) */
+  noext?: boolean
+}
+
+export class Matcher {
+  pattern: string
+  options: MatcherOptions
+  constructor(pattern: string, options: MatcherOptions = {}) {
+    this.pattern = pattern
+    this.options = options
+    // TODO: assemble the state machine
+  }
+
+  test(s: string): boolean {
+    // TODO pass the string through the test methods
+    // return true if it is a match
+    return false
+  }
+}
