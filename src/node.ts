@@ -1,9 +1,14 @@
 import { State } from './state.js'
 import { parseClass } from './parse-class.js'
+//import assert from 'node:assert'
 
 export type MatcherOptions = {
+  /** perform a case-insensitive match */
   nocase?: boolean
+  /** do not treat strings starting with `.` specially */
   dot?: boolean
+  /** do not match extglobs (treat them as normal strings) */
+  noext?: boolean
 }
 
 export class Node {
@@ -62,6 +67,7 @@ const appendPassthrough = <N extends Node>(
     to.in.push(tail)
   }
   for (const i of from.in) {
+    console.error('append pt %s -> %s -> %s', i, from, to)
     i.append(to)
   }
   return to
@@ -81,7 +87,7 @@ const getCharTest = (c: string) =>
 
 const getCharTestNoCase = (c: string) =>
   (TEST[`nocase-${c}]`] ??= (s: State) =>
-    !s.str.charAt(s.pos).localeCompare(c, 'en', { sensitivity: 'base' }))
+    !s.str.charAt(s.pos).localeCompare(c, 'en', { sensitivity: 'accent' }))
 
 const getReTest = (re: RegExp) =>
   (TEST[`re-${re}`] ??= (s: State) => re.test(s.str.charAt(s.pos)))
@@ -147,29 +153,42 @@ export class NodeExit extends Node {
  */
 export class NodeEvalNegation extends Node {
   name = '<NegEval>'
-  evaluate(inputs: Node[]) {
-    return inputs.length === 1 && inputs[0] === this.in[0]
+  evaluate(node: Node) {
+    return node === this.in[0]
   }
 }
 
+let ID = 0
+// TODO: make this dot-sensitive
 export class NodeExtNeg extends Node implements NodeExt {
   subs: Node[] = []
+  id = ID++
   eval = new NodeEvalNegation()
   constructor(subs: string[], options: MatcherOptions) {
     super()
+    this.eval.name = '<NegEval '+this.id+' '+subs.join('|')+'>'
     const subStar = new Node()
-    subStar.name = '<NegPass>'
+    subStar.name = '<Neg *' + this.id + '>'
+    const negPass = new Node()
+    negPass.name = '<Neg * PASS ' + this.id + '>'
+    // negPass has to be the first thing into the eval
+    const ns = new NodeStar()
+    //ns.append(subStar)
+    subStar.append(ns).append(negPass).append(this.eval)
+
+    const negFail = new Node()
+    negFail.name = '<Neg sub FAIL ' + this.id + '>'
+    negFail.append(this.eval)
     this.subs.push(subStar)
-    const preEval = new Node()
-    preEval.name = '<NegPreEval*>'
-    subStar.append(new NodeStar()).append(preEval).append(this.eval)
     for (const s of subs) {
       const enter = new Node()
-      enter.name = 'SUB<' + s + '>'
+      enter.name = 'SUB' + this.id + '<' + s + '>'
       this.subs.push(enter)
-      parse(enter, s, options).append(new Node()).append(this.eval)
+      parse(enter, s, options).append(negFail)
+      //parse(enter, s, options).append(this.eval)
     }
-    this.name = '!(' + subs.join('|') + ')'
+    console.error('evals in', this.eval.in.join(', '))
+    this.name = '!(' + subs.join('|') + this.id + ')'
   }
   append<N extends Node>(to: N): N {
     return this.eval.append(to)
@@ -213,6 +232,7 @@ export class NodeExtStar extends Node implements NodeExt {
       parse(enter, s, options).append(this.eval)
     }
     this.name = '*(' + subs.join('|') + ')'
+    this.eval.append(this)
   }
   append<N extends Node>(to: N): N {
     return appendPassthrough(this, to, this.eval)
@@ -225,7 +245,6 @@ export class NodeExtPlus extends Node implements NodeExt {
   constructor(subs: string[], options: MatcherOptions) {
     super()
     this.eval.name = '<Eval +>'
-    this.eval.append(this)
     for (const s of subs) {
       const enter = new Node()
       enter.name = 'SUB<' + s + '>'
@@ -233,6 +252,7 @@ export class NodeExtPlus extends Node implements NodeExt {
       parse(enter, s, options).append(this.eval)
     }
     this.name = '+(' + subs.join('|') + ')'
+    this.eval.append(this)
   }
   append<N extends Node>(to: N): N {
     return this.eval.append(to)
@@ -283,7 +303,7 @@ export const parse = (
       continue
     }
 
-    if (isExtType(c) && pattern[i + 1] === '(') {
+    if (!options.noext && isExtType(c) && pattern[i + 1] === '(') {
       const [subs, consumed] = parseExt(pattern, i)
       if (consumed) {
         i += consumed - 1
@@ -317,7 +337,12 @@ export const parse = (
     }
 
     if (c === '[') {
-      const [re, consumed] = parseClass(pattern, i)
+      const [re, consumed] = parseClass(
+        pattern,
+        i,
+        options.nocase,
+        options.dot,
+      )
       if (consumed) {
         i += consumed - 1
         exit = exit.append(new NodeRE(re))
@@ -336,6 +361,16 @@ export const parse = (
   return exit
 }
 
+// this is *slightly* less efficient than it could be, because we break
+// the string up into parts, then pass the list of subs back. those sub
+// expression strings might contain further extglobs, so the string gets
+// effectively parsed multiple times. Since these pattern strings
+// tend to be short, it's likely not much of a problem, but it could be
+// better to do the full AST split all the way down, create the actual
+// subexpression nodes, and pass those to the extglob node, which is
+// then returned by this function instead of just a list of strings.
+// This would require updating the Ext node types to take a list of
+// nodes, rather than a list of string pattern expressions.
 const parseExt = (
   pattern: string,
   position: number,

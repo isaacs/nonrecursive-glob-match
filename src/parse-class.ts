@@ -44,6 +44,7 @@ export const parseClass = (
   glob: string,
   position: number,
   nocase: boolean = false,
+  dot: boolean = false,
 ): ParseClassResult => {
   const pos = position
   /* c8 ignore start */
@@ -164,9 +165,11 @@ export const parseClass = (
   const sranges = '[' + (negate ? '^' : '') + rangesToString(ranges) + ']'
   const snegs = '[' + (negate ? '' : '^') + rangesToString(negs) + ']'
   const comb =
-    ranges.length && negs.length ? '(' + sranges + '|' + snegs + ')'
+    '^' +
+    (dot ? '' : '(?!\\.)') +
+    (ranges.length && negs.length ? '(' + sranges + '|' + snegs + ')'
     : ranges.length ? sranges
-    : snegs
+    : snegs)
 
   const flags = `${uflag ? 'u' : ''}${nocase ? 'i' : ''}`
   return [new RegExp(comb, flags), endPos - pos]
