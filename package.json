@@ -1,7 +1,7 @@
 {
   "name": "@isaacs/nonrecursive-glob-match",
   "description": "a single-path-portion glob matcher not subject to recursive backtracking ReDoS",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "BlueOak-1.0.0",
   "files": [
     "dist",
