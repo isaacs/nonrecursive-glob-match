@@ -179,10 +179,49 @@ long as it _doesn't_ match one of the supplied patterns. This is
 where it gets complicated, and past attempts have run into
 problems.
 
+## Unicode Normalization
+
+A char such as `é` can be one code point (U+00E9), or `e`
+followed by a combining accent (U+0301). Some file systems, such
+as on macOS, can give file names in the second form. These two
+forms do not match by default.
+
+Set the `normalize` option to normalize the pattern and each
+tested string to the same form. Use `'NFC'`, `'NFD'`, `'NFKC'`,
+or `'NFKD'`. `true` means `'NFC'`.
+
+```ts
+const m = new Matcher('café', { normalize: true })
+m.test('café') // true
+```
+
+- Use NFC if you are not sure. With NFD and NFKD, `é` is two
+  code points. Then `?` does not match `é`, and `[é]` can not
+  match it.
+- NFKC and NFKD also fold compatibility chars. For example, `ﬁ`
+  matches `fi`, and full-width `Ａ` matches `A`.
+- Syntax is parsed before normalization. So, a char that
+  normalizes to a syntax char stays a literal. For example, with
+  NFKC, full-width `＊` matches only `*` or `＊`, and it is not a
+  wildcard.
+- Each run of literal chars normalizes as one string. Each member
+  of a `[...]` class normalizes on its own, and stays as it is if
+  its normal form is more than one code point.
+- A combining mark after a wildcard is its own literal, and does
+  not compose with the char that the wildcard matches. So, with
+  NFC, `?́` does not match `é`. With NFD, it does match,
+  because `é` is also two code points in the string. Patterns
+  match code points, not grapheme clusters.
+- With `nocase`, normalization comes first, then case folding.
+- The `/` check uses the strings as given. So, full-width `／`
+  does not cause an error.
+
 ## Differences from Bash
 
-Bash 5 is the reference for this module, with one known
-deviation for dotfiles.
+Bash 5 is the reference for this module, with two known
+deviations.
+
+### Dotfiles
 
 If `dot` is not set, a string that starts with `.` only matches
 if a literal `.` in the pattern matches that first character.
@@ -196,6 +235,26 @@ report](https://lists.gnu.org/archive/html/bug-bash/2026-03/msg00034.html).
 A `*` can never match at the start of a dotfile, even if it
 matches the empty string. So, `*.js` does not match `.js`, as in
 Bash.
+
+### Case-insensitive matching
+
+Bash compares chars with the case functions of the C library for
+the current locale. So, the results can change with the locale
+and the platform.
+
+With `nocase`, this module uses Unicode simple case folding, one
+code point at a time. This is the same folding that a JavaScript
+RegExp uses with the `iu` flags. It does not change with the
+locale, and literals, `[...]` classes, and ranges all use it.
+
+- `Σ`, `σ`, and final sigma `ς` all match each other.
+- The micro sign `µ` matches `μ` and `Μ`. The Kelvin sign `K`
+  matches `k`. The Angstrom sign `Å` matches `å`.
+- `ẞ` matches `ß`, but `ß` does not match `ss`. A fold never
+  changes the number of chars, so ligatures such as `ﬁ` do not
+  match `fi`.
+- There are no Turkish rules. `I` matches `i`, but dotted `İ`
+  and dotless `ı` only match themselves.
 
 ## Algorithm
 

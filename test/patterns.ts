@@ -146,6 +146,9 @@ export const patterns: (
       '(a|c)',
     ]),
   ['*(a|b|c)', ['x(a|b|c)', '(a|b|c)'], { noext: true }],
+  // a close paren with no open extglob is a literal
+  ['d)', ['d)']],
+  ['@(c|d))', ['d)']],
 
   ['#*', ['#a', '#b'], {}, ['#a', '#b', 'c#d']],
 

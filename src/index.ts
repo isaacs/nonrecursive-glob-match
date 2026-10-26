@@ -1,4 +1,6 @@
-import { parseClass } from './parse-class.js'
+import { type Form, parseClass } from './parse-class.js'
+
+export type { Form }
 
 export type MatcherOptions = {
   /** perform a case-insensitive match */
@@ -7,6 +9,11 @@ export type MatcherOptions = {
   dot?: boolean
   /** do not match extglobs (treat them as normal strings) */
   noext?: boolean
+  /**
+   * normalize unicode in the pattern and the tested strings, with
+   * this form. `true` means `'NFC'`.
+   */
+  normalize?: boolean | Form
 }
 
 // parsed pattern items
@@ -25,7 +32,8 @@ export type Token =
 export type NegNode = { t: 'neg'; id: number; sub: Node; next: Node }
 export type SplitNode = { t: 'split'; id: number; out: Node[] }
 export type Node =
-  | { t: 'lit'; id: number; ch: string; next: Node }
+  // `re` folds case, if `nocase:true`
+  | { t: 'lit'; id: number; ch: string; re?: RegExp; next: Node }
   | { t: 'any' | 'star'; id: number; next: Node }
   | { t: 'class'; id: number; re: RegExp; next: Node }
   | SplitNode
@@ -40,7 +48,17 @@ const extTypes = '!?+*@'
 
 const lit = (ch: string): Item => ({ t: 'lit', ch })
 
-const tokenize = (p: string, nocase: boolean, noext: boolean) => {
+const reEscape = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
+
+// a RegExp that only matches `s`, with unicode case folding
+const foldRe = (s: string) => new RegExp(`^${reEscape(s)}$`, 'iu')
+
+const tokenize = (
+  p: string,
+  nocase: boolean,
+  noext: boolean,
+  form?: Form,
+) => {
   const toks: Token[] = []
   for (let i = 0; i < p.length;) {
     const c = String.fromCodePoint(p.codePointAt(i)!)
@@ -53,7 +71,7 @@ const tokenize = (p: string, nocase: boolean, noext: boolean) => {
       continue
     }
     if (c === '[') {
-      const [re, consumed] = parseClass(p, i, nocase)
+      const [re, consumed] = parseClass(p, i, nocase, form)
       if (consumed) {
         toks.push({ t: 'class', re })
         i += consumed
@@ -122,6 +140,33 @@ const build = (
   return alts
 }
 
+// normalize each run of literal chars as one string, so that a char
+// and the combining marks after it compose (or decompose) together.
+// Syntax is already parsed, so a char that normalizes to a syntax
+// char (such as full-width `＊` in NFKC) stays a literal.
+const normalize = (items: Item[], form: Form): Item[] => {
+  const out: Item[] = []
+  let run = ''
+  const flush = () => {
+    for (const ch of run.normalize(form)) out.push(lit(ch))
+    run = ''
+  }
+  for (const it of items) {
+    if (it.t === 'lit') {
+      run += it.ch
+      continue
+    }
+    flush()
+    out.push(
+      it.t === 'ext' ?
+        { ...it, alts: it.alts.map(a => normalize(a, form)) }
+      : it,
+    )
+  }
+  flush()
+  return out
+}
+
 const compile = (items: Item[], nocase: boolean): Node => {
   let id = 1
   const split = (out: Node[]): SplitNode => ({ t: 'split', id: id++, out })
@@ -130,8 +175,8 @@ const compile = (items: Item[], nocase: boolean): Node => {
   const item = (it: Item, next: Node): Node => {
     switch (it.t) {
       case 'lit':
-        const ch = nocase ? it.ch.toLowerCase() : it.ch
-        return { t: 'lit', id: id++, ch, next }
+        const re = nocase ? foldRe(it.ch) : undefined
+        return { t: 'lit', id: id++, ch: it.ch, re, next }
       case 'any':
       case 'star':
         return { t: it.t, id: id++, next }
@@ -207,14 +252,11 @@ class State {
 
 class Sim {
   chars: string[]
-  // chars to compare with literals
-  cmp: string[]
   dots: boolean
   dotStart: boolean
 
-  constructor(s: string, { nocase, dot }: MatcherOptions) {
+  constructor(s: string, { dot }: MatcherOptions) {
     this.chars = [...s]
-    this.cmp = nocase ? this.chars.map(c => c.toLowerCase()) : this.chars
     // `.` and `..` only match literal dots, even with `dot:true`
     this.dots = s === '.' || s === '..'
     this.dotStart = !dot && s.startsWith('.')
@@ -271,7 +313,10 @@ class Sim {
     for (const th of state.threads.values()) {
       switch (th.t) {
         case 'lit':
-          if (this.cmp[i] === th.ch) this.add(next, th.next, i + 1, top)
+          const c = this.chars[i]!
+          if (th.re ? th.re.test(c) : c === th.ch) {
+            this.add(next, th.next, i + 1, top)
+          }
           break
         case 'any':
           if (!this.restricted(i, top)) this.add(next, th.next, i + 1, top)
@@ -299,6 +344,11 @@ export class Matcher {
   pattern: string
   options: MatcherOptions
   #start: Node
+  // the string to compare, if the pattern has no magic. The RegExp
+  // folds case, if `nocase:true`.
+  #literal?: string
+  #literalRe?: RegExp
+  #form?: Form
 
   constructor(pattern: string, options: MatcherOptions = {}) {
     if (pattern.includes('/')) {
@@ -308,18 +358,30 @@ export class Matcher {
     }
     this.pattern = pattern
     this.options = options
-    const { nocase = false, noext = false } = options
+    const { nocase = false, noext = false, normalize: n } = options
+    this.#form = n === true ? 'NFC' : n || undefined
     // a pattern that is only an empty extglob is a literal string,
     // except for `!()`, which matches any non-empty string
     const literal = /^[?*+@]\(\)$/.test(pattern)
-    const toks = tokenize(pattern, nocase, noext || literal)
-    const [items] = build(toks, pair(toks), 0, toks.length, true)
+    const toks = tokenize(pattern, nocase, noext || literal, this.#form)
+    let [items] = build(toks, pair(toks), 0, toks.length, true)
+    if (this.#form) items = normalize(items!, this.#form)
     this.#start = compile(items!, nocase)
+    if (items!.every(it => it.t === 'lit')) {
+      this.#literal = items!.map(it => it.ch).join('')
+      if (nocase) this.#literalRe = foldRe(this.#literal)
+    }
   }
 
   test(s: string): boolean {
     if (s.includes('/')) {
       throw new Error('can only match a single path portion, got: ' + s)
+    }
+    if (this.#form) s = s.normalize(this.#form)
+    if (this.#literal !== undefined) {
+      return this.#literalRe ?
+          this.#literalRe.test(s)
+        : s === this.#literal
     }
     const sim = new Sim(s, this.options)
     let state = new State()

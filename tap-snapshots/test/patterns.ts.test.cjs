@@ -349,7 +349,7 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > [-abc] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\-abc]/ -> match
+1: /^[\\-abc]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [!a* > parsed matcher 1`] = `
@@ -380,11 +380,11 @@ start -> 5
 
 exports[`test/patterns.ts > TAP > [[:ascii:]][[:ascii:]][[:ascii:]][[:ascii:]][[:ascii:]] > parsed matcher 1`] = `
 start -> 5
-5: /^[\\x00-\\x7f]/ -> 4
-4: /^[\\x00-\\x7f]/ -> 3
-3: /^[\\x00-\\x7f]/ -> 2
-2: /^[\\x00-\\x7f]/ -> 1
-1: /^[\\x00-\\x7f]/ -> match
+5: /^[\\x00-\\x7f]/u -> 4
+4: /^[\\x00-\\x7f]/u -> 3
+3: /^[\\x00-\\x7f]/u -> 2
+2: /^[\\x00-\\x7f]/u -> 1
+1: /^[\\x00-\\x7f]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [[:graph:][:digit:]]f* > parsed matcher 1`] = `
@@ -403,8 +403,8 @@ start -> 3
 
 exports[`test/patterns.ts > TAP > [[:xdigit:]][[:xdigit:]]??? > parsed matcher 1`] = `
 start -> 5
-5: /^[A-Fa-f0-9]/ -> 4
-4: /^[A-Fa-f0-9]/ -> 3
+5: /^[A-Fa-f0-9]/u -> 4
+4: /^[A-Fa-f0-9]/u -> 3
 3: ? -> 2
 2: ? -> 1
 1: ? -> match
@@ -412,16 +412,16 @@ start -> 5
 
 exports[`test/patterns.ts > TAP > [[:xdigit:]][[:xdigit:]][[:xdigit:]][[:xdigit:]][[:xdigit:]] > parsed matcher 1`] = `
 start -> 5
-5: /^[A-Fa-f0-9]/ -> 4
-4: /^[A-Fa-f0-9]/ -> 3
-3: /^[A-Fa-f0-9]/ -> 2
-2: /^[A-Fa-f0-9]/ -> 1
-1: /^[A-Fa-f0-9]/ -> match
+5: /^[A-Fa-f0-9]/u -> 4
+4: /^[A-Fa-f0-9]/u -> 3
+3: /^[A-Fa-f0-9]/u -> 2
+2: /^[A-Fa-f0-9]/u -> 1
+1: /^[A-Fa-f0-9]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [[] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\[]/ -> match
+1: /^[\\[]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [] > parsed matcher 1`] = `
@@ -432,17 +432,17 @@ start -> 2
 
 exports[`test/patterns.ts > TAP > []-] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\]\\-]/ -> match
+1: /^[\\]\\-]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > []] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\]]/ -> match
+1: /^[\\]]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > []+*] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\]+*]/ -> match
+1: /^[\\]+*]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [* > parsed matcher 1`] = `
@@ -453,12 +453,12 @@ start -> 2
 
 exports[`test/patterns.ts > TAP > [\\-\\]] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\-\\]]/ -> match
+1: /^[\\-\\]]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [\\\\] > parsed matcher 1`] = `
 start -> 1
-1: /^[\\\\]/ -> match
+1: /^[\\\\]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [\\b-a] > parsed matcher 1`] = `
@@ -481,7 +481,7 @@ start -> 4
 
 exports[`test/patterns.ts > TAP > [^a-c]* > parsed matcher 1`] = `
 start -> 2
-2: /^[^a-c]/ -> 1
+2: /^[^a-c]/u -> 1
 1: * -> match
 `
 
@@ -497,26 +497,26 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > [a-b-c] > parsed matcher 1`] = `
 start -> 1
-1: /^[a-b\\-c]/ -> match
+1: /^[a-b\\-c]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [a-c]b* > parsed matcher 1`] = `
 start -> 3
-3: /^[a-c]/ -> 2
+3: /^[a-c]/u -> 2
 2: "b" -> 1
 1: * -> match
 `
 
 exports[`test/patterns.ts > TAP > [a-y]*[^c] > parsed matcher 1`] = `
 start -> 3
-3: /^[a-y]/ -> 2
+3: /^[a-y]/u -> 2
 2: * -> 1
-1: /^[^c]/ -> match
+1: /^[^c]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [a-z] > parsed matcher 1`] = `
 start -> 1
-1: /^[a-z]/ -> match
+1: /^[a-z]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [abc > parsed matcher 1`] = `
@@ -529,32 +529,32 @@ start -> 4
 
 exports[`test/patterns.ts > TAP > [abc-] > parsed matcher 1`] = `
 start -> 1
-1: /^[abc\\-]/ -> match
+1: /^[abc\\-]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > [f-fz-a]* > parsed matcher 1`] = `
 start -> 2
-2: /^[f]/ -> 1
+2: /^[f]/u -> 1
 1: * -> match
 `
 
 exports[`test/patterns.ts > TAP > [f-gz-a]* > parsed matcher 1`] = `
 start -> 2
-2: /^[f-g]/ -> 1
+2: /^[f-g]/u -> 1
 1: * -> match
 `
 
 exports[`test/patterns.ts > TAP > [fz-a]* > parsed matcher 1`] = `
 start -> 2
-2: /^[f]/ -> 1
+2: /^[f]/u -> 1
 1: * -> match
 `
 
 exports[`test/patterns.ts > TAP > [ia]?[ck] > parsed matcher 1`] = `
 start -> 3
-3: /^[ia]/i -> 2
+3: /^[ia]/iu -> 2
 2: ? -> 1
-1: /^[ck]/i -> match
+1: /^[ck]/iu -> match
 `
 
 exports[`test/patterns.ts > TAP > [z-a] > parsed matcher 1`] = `
@@ -569,13 +569,13 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > [z-af]* > parsed matcher 1`] = `
 start -> 2
-2: /^[f]/ -> 1
+2: /^[f]/u -> 1
 1: * -> match
 `
 
 exports[`test/patterns.ts > TAP > [z\\-a] > parsed matcher 1`] = `
 start -> 1
-1: /^[z\\-a]/ -> match
+1: /^[z\\-a]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > @(.*) > parsed matcher 1`] = `
@@ -639,7 +639,7 @@ start -> 5
 2: "a" -> 1
 1: "b" -> match
 4: "a" -> 3
-3: /^[(]/ -> 1
+3: /^[(]/u -> 1
 `
 
 exports[`test/patterns.ts > TAP > @(a|a[)])b > parsed matcher 1`] = `
@@ -648,7 +648,15 @@ start -> 5
 2: "a" -> 1
 1: "b" -> match
 4: "a" -> 3
-3: /^[)]/ -> 1
+3: /^[)]/u -> 1
+`
+
+exports[`test/patterns.ts > TAP > @(c|d)) > parsed matcher 1`] = `
+start -> 4
+4: split -> 2, 3
+2: "c" -> 1
+1: ")" -> match
+3: "d" -> 1
 `
 
 exports[`test/patterns.ts > TAP > @(js|.*) > parsed matcher 1`] = `
@@ -761,7 +769,7 @@ exports[`test/patterns.ts > TAP > *.Y > parsed matcher 1`] = `
 start -> 3
 3: * -> 2
 2: "." -> 1
-1: "y" -> match
+1: "Y" -> match
 `
 
 exports[`test/patterns.ts > TAP > *.z > parsed matcher 1`] = `
@@ -775,7 +783,7 @@ exports[`test/patterns.ts > TAP > *.Z > parsed matcher 1`] = `
 start -> 3
 3: * -> 2
 2: "." -> 1
-1: "z" -> match
+1: "Z" -> match
 `
 
 exports[`test/patterns.ts > TAP > *(?) > parsed matcher 1`] = `
@@ -1009,7 +1017,7 @@ start -> 6
 2: "x" -> 1
 1: split -> match, 6
 5: "a" -> 4
-4: /^[^)]/ -> 3
+4: /^[^)]/u -> 3
 3: "y" -> 1
 `
 
@@ -1030,7 +1038,7 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > Å > parsed matcher 1`] = `
 start -> 1
-1: "å" -> match
+1: "Å" -> match
 `
 
 exports[`test/patterns.ts > TAP > a > parsed matcher 2`] = `
@@ -1040,7 +1048,7 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > A > parsed matcher 2`] = `
 start -> 1
-1: "a" -> match
+1: "A" -> match
 `
 
 exports[`test/patterns.ts > TAP > å > parsed matcher 2`] = `
@@ -1080,7 +1088,7 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > A > parsed matcher 4`] = `
 start -> 1
-1: "a" -> match
+1: "A" -> match
 `
 
 exports[`test/patterns.ts > TAP > å > parsed matcher 4`] = `
@@ -1090,7 +1098,7 @@ start -> 1
 
 exports[`test/patterns.ts > TAP > Å > parsed matcher 4`] = `
 start -> 1
-1: "å" -> match
+1: "Å" -> match
 `
 
 exports[`test/patterns.ts > TAP > a?c > parsed matcher 1`] = `
@@ -1103,21 +1111,21 @@ start -> 3
 exports[`test/patterns.ts > TAP > a[\\b]c > parsed matcher 1`] = `
 start -> 3
 3: "a" -> 2
-2: /^[b]/ -> 1
+2: /^[b]/u -> 1
 1: "c" -> match
 `
 
 exports[`test/patterns.ts > TAP > a[b]c > parsed matcher 1`] = `
 start -> 3
 3: "a" -> 2
-2: /^[b]/ -> 1
+2: /^[b]/u -> 1
 1: "c" -> match
 `
 
 exports[`test/patterns.ts > TAP > a[X-]b > parsed matcher 1`] = `
 start -> 3
 3: "a" -> 2
-2: /^[X\\-]/ -> 1
+2: /^[X\\-]/u -> 1
 1: "b" -> match
 `
 
@@ -1131,7 +1139,7 @@ exports[`test/patterns.ts > TAP > a*[^c] > parsed matcher 1`] = `
 start -> 3
 3: "a" -> 2
 2: * -> 1
-1: /^[^c]/ -> match
+1: /^[^c]/u -> match
 `
 
 exports[`test/patterns.ts > TAP > a**?**cd**?**??***k > parsed matcher 1`] = `
@@ -1333,6 +1341,12 @@ start -> 2
 1: * -> match
 `
 
+exports[`test/patterns.ts > TAP > d) > parsed matcher 1`] = `
+start -> 2
+2: "d" -> 1
+1: ")" -> match
+`
+
 exports[`test/patterns.ts > TAP > X* > parsed matcher 1`] = `
 start -> 2
 2: "X" -> 1
@@ -1341,7 +1355,7 @@ start -> 2
 
 exports[`test/patterns.ts > TAP > XYZ > parsed matcher 1`] = `
 start -> 3
-3: "x" -> 2
-2: "y" -> 1
-1: "z" -> match
+3: "X" -> 2
+2: "Y" -> 1
+1: "Z" -> match
 `

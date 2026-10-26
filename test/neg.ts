@@ -36,3 +36,7 @@ t.equal(pattern.test('c'), true)
 // https://lists.gnu.org/archive/html/bug-bash/2026-03/msg00034.html
 t.equal(new Matcher('!(.a|js)@(.*)').test('.foo'), true)
 t.equal(new Matcher('@(.|!(a))*').test('.foo'), true)
+
+// two empty paths reach the same negation at one position
+t.equal(new Matcher('@(|)!(a)').test('a'), false)
+t.equal(new Matcher('@(|)!(a)').test('b'), true)

@@ -1,30 +1,31 @@
 // translate the various posix character classes into unicode properties
 // this works across all unicode locales
 
-// { <posix class>: [<translation>, /u flag required, negated]
-const posixClasses: { [k: string]: [e: string, u: boolean, n?: boolean] } =
-  {
-    '[:alnum:]': ['\\p{L}\\p{Nl}\\p{Nd}', true],
-    '[:alpha:]': ['\\p{L}\\p{Nl}', true],
-    '[:ascii:]': ['\\x' + '00-\\x' + '7f', false],
-    '[:blank:]': ['\\p{Zs}\\t', true],
-    '[:cntrl:]': ['\\p{Cc}', true],
-    '[:digit:]': ['\\p{Nd}', true],
-    '[:graph:]': ['\\p{Z}\\p{C}', true, true],
-    '[:lower:]': ['\\p{Ll}', true],
-    '[:print:]': ['\\p{C}', true],
-    '[:punct:]': ['\\p{P}', true],
-    '[:space:]': ['\\p{Z}\\t\\r\\n\\v\\f', true],
-    '[:upper:]': ['\\p{Lu}', true],
-    '[:word:]': ['\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}', true],
-    '[:xdigit:]': ['A-Fa-f0-9', false],
-  }
+// { <posix class>: [<translation>, negated]
+const posixClasses: { [k: string]: [e: string, n?: boolean] } = {
+  '[:alnum:]': ['\\p{L}\\p{Nl}\\p{Nd}'],
+  '[:alpha:]': ['\\p{L}\\p{Nl}'],
+  '[:ascii:]': ['\\x' + '00-\\x' + '7f'],
+  '[:blank:]': ['\\p{Zs}\\t'],
+  '[:cntrl:]': ['\\p{Cc}'],
+  '[:digit:]': ['\\p{Nd}'],
+  '[:graph:]': ['\\p{Z}\\p{C}', true],
+  '[:lower:]': ['\\p{Ll}'],
+  '[:print:]': ['\\p{C}'],
+  '[:punct:]': ['\\p{P}'],
+  '[:space:]': ['\\p{Z}\\t\\r\\n\\v\\f'],
+  '[:upper:]': ['\\p{Lu}'],
+  '[:word:]': ['\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}'],
+  '[:xdigit:]': ['A-Fa-f0-9'],
+}
 
 // only need to escape a few things inside of brace expressions
 // escapes: [ \ ] -
 const braceEscape = (s: string) => s.replace(/[[\]\\-]/g, '\\$&')
 
 export type ParseClassResult = [re: RegExp, consumed: number]
+
+export type Form = 'NFC' | 'NFD' | 'NFKC' | 'NFKD'
 
 const noMatch = /$./
 
@@ -39,7 +40,13 @@ export const parseClass = (
   glob: string,
   position: number,
   nocase: boolean = false,
+  form?: Form,
 ): ParseClassResult => {
+  // normalize one class member, if it stays one code point
+  const norm = (c: string) => {
+    const n = form ? c.normalize(form) : c
+    return [...n].length === 1 ? n : c
+  }
   const pos = position
   /* c8 ignore start */
   if (glob.charAt(pos) !== '[') {
@@ -51,13 +58,12 @@ export const parseClass = (
 
   let i = pos + 1
   let sawStart = false
-  let uflag = false
   let escaping = false
   let negate = false
   let endPos = pos
   let rangeStart = ''
   WHILE: while (i < glob.length) {
-    const c = glob.charAt(i)
+    const c = String.fromCodePoint(glob.codePointAt(i)!)
     if ((c === '!' || c === '^') && i === pos + 1) {
       negate = true
       i++
@@ -80,7 +86,7 @@ export const parseClass = (
     }
     if (c === '[' && !escaping) {
       // either a posix class, a collation equivalent, or just a [
-      for (const [cls, [unip, u, neg]] of Object.entries(posixClasses)) {
+      for (const [cls, [unip, neg]] of Object.entries(posixClasses)) {
         if (glob.startsWith(cls, i)) {
           // invalid, [a-[] is fine, but not [a-[:alpha]]
           if (rangeStart) {
@@ -89,7 +95,6 @@ export const parseClass = (
           i += cls.length
           if (neg) negs.push(unip)
           else ranges.push(unip)
-          uflag = uflag || u
           continue WHILE
         }
       }
@@ -97,35 +102,36 @@ export const parseClass = (
 
     // now it's just a normal character, effectively
     escaping = false
+    const n = norm(c)
     if (rangeStart) {
       // throw this range away if it's not valid, but others
       // can still match.
-      if (c > rangeStart) {
-        ranges.push(braceEscape(rangeStart) + '-' + braceEscape(c))
-      } else if (c === rangeStart) {
-        ranges.push(braceEscape(c))
+      if (n.codePointAt(0)! > rangeStart.codePointAt(0)!) {
+        ranges.push(braceEscape(rangeStart) + '-' + braceEscape(n))
+      } else if (n === rangeStart) {
+        ranges.push(braceEscape(n))
       }
       rangeStart = ''
-      i++
+      i += c.length
       continue
     }
 
     // now might be the start of a range.
     // can be either c-d or c-] or c<more...>] or c] at this point
-    if (glob.startsWith('-]', i + 1)) {
-      ranges.push(braceEscape(c + '-'))
-      i += 2
+    if (glob.startsWith('-]', i + c.length)) {
+      ranges.push(braceEscape(n + '-'))
+      i += c.length + 1
       continue
     }
-    if (glob.startsWith('-', i + 1)) {
-      rangeStart = c
-      i += 2
+    if (glob.startsWith('-', i + c.length)) {
+      rangeStart = n
+      i += c.length + 1
       continue
     }
 
     // not the start of a range, just a single character
-    ranges.push(braceEscape(c))
-    i++
+    ranges.push(braceEscape(n))
+    i += c.length
   }
 
   if (endPos < i) {
@@ -148,6 +154,5 @@ export const parseClass = (
     : ranges.length ? sranges
     : snegs)
 
-  const flags = `${uflag ? 'u' : ''}${nocase ? 'i' : ''}`
-  return [new RegExp(comb, flags), endPos - pos]
+  return [new RegExp(comb, nocase ? 'iu' : 'u'), endPos - pos]
 }
