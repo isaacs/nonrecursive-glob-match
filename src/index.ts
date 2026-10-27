@@ -270,15 +270,14 @@ const sameState = (a: State, b: State): boolean => {
 }
 
 class Sim {
-  chars: string[]
+  // `.` and `..` only match literal dots, even with `dot:true`
   dots: boolean
+  // the string starts with `.`, and `dot:true` is not set
   dotStart: boolean
 
-  constructor(s: string, { dot }: MatcherOptions) {
-    this.chars = [...s]
-    // `.` and `..` only match literal dots, even with `dot:true`
-    this.dots = s === '.' || s === '..'
-    this.dotStart = !dot && s.startsWith('.')
+  constructor(dots: boolean, dotStart: boolean) {
+    this.dots = dots
+    this.dotStart = dotStart
   }
 
   // wildcards only match a leading dot if `dot:true`. In a negated
@@ -325,12 +324,12 @@ class Sim {
     }
   }
 
-  step(state: State, i: number, top: boolean): State {
+  // the threads after char `c`, at index `i`
+  step(state: State, c: string, i: number, top: boolean): State {
     const next = new State()
     for (const th of state.threads.values()) {
       switch (th.t) {
         case 'lit':
-          const c = this.chars[i]!
           if (th.re ? th.re.test(c) : c === th.ch) {
             this.add(next, th.next, i + 1, top)
           }
@@ -339,7 +338,7 @@ class Sim {
           if (!this.restricted(i, top)) this.add(next, th.next, i + 1, top)
           break
         case 'class':
-          if (!this.restricted(i, top) && th.re.test(this.chars[i]!)) {
+          if (!this.restricted(i, top) && th.re.test(c)) {
             this.add(next, th.next, i + 1, top)
           }
           break
@@ -356,7 +355,7 @@ class Sim {
           this.addRun(next, run, i + 1, top)
           continue
         }
-        const sub = this.step(run.state, i, false)
+        const sub = this.step(run.state, c, i, false)
         this.addRun(
           next,
           { t: 'run', neg: run.neg, state: sub },
@@ -366,6 +365,105 @@ class Sim {
       }
     }
     return next
+  }
+}
+
+// A canonical key for the threads in a state. States with the same
+// key hold the same threads, so they match the same strings.
+const stateKey = (state: State): string => {
+  const ids = [...state.threads.keys()].sort((a, b) => a - b).join()
+  if (!state.runs.length) return ids
+  const runs = state.runs.map(r => `${r.neg.id}(${stateKey(r.state)})`)
+  return `${ids}|${runs.sort().join('|')}`
+}
+
+// A cached state of the simulation, and the states that each char
+// leads to.
+type DState = {
+  state: State
+  match: boolean
+  // no threads, so nothing more can match
+  dead: boolean
+  next: Map<string, DState>
+}
+
+// The cache can hold about this many chars of state keys and
+// transitions. When it is full, it is cleared, so that a pattern
+// can not use an unbounded amount of memory.
+const DFA_BUDGET = 1 << 18
+
+// A cache of the states that the simulation reaches, built as the
+// matcher is used. Each char of a string is then one Map lookup,
+// once the states that it leads to are known.
+//
+// The dot rules only restrict the first char of a dotfile (strings
+// that are only `.` or `..` do not use the cache). So a dotfile
+// starts at its own state, which takes its first step with the
+// restriction, and every other state takes steps without it.
+class Dfa {
+  #start: Node
+  #states = new Map<string, DState>()
+  #size = 0
+  #plain?: DState
+  #dotStart?: DState
+  #sim = new Sim(false, false)
+  #dotSim = new Sim(false, true)
+
+  constructor(start: Node) {
+    this.#start = start
+  }
+
+  #make(state: State): DState {
+    return {
+      state,
+      match: state.threads.has(MATCH.id),
+      dead: !state.threads.size && !state.runs.length,
+      next: new Map(),
+    }
+  }
+
+  #intern(state: State): DState {
+    const key = stateKey(state)
+    const found = this.#states.get(key)
+    if (found) return found
+    if (this.#size > DFA_BUDGET) this.#clear()
+    const d = this.#make(state)
+    this.#states.set(key, d)
+    this.#size += key.length + 1
+    return d
+  }
+
+  #clear() {
+    this.#states.clear()
+    this.#size = 0
+    this.#plain = undefined
+    this.#dotStart = undefined
+  }
+
+  start(dotStart: boolean): DState {
+    if (dotStart) {
+      if (this.#dotStart) return this.#dotStart
+      const state = new State()
+      this.#dotSim.add(state, this.#start, 0, true)
+      return (this.#dotStart = this.#make(state))
+    }
+    if (this.#plain) return this.#plain
+    const state = new State()
+    this.#sim.add(state, this.#start, 0, true)
+    return (this.#plain = this.#intern(state))
+  }
+
+  next(d: DState, c: string): DState {
+    const found = d.next.get(c)
+    if (found) return found
+    // the dotfile start is not in the cache, so it is never shared
+    const n =
+      d === this.#dotStart ?
+        this.#intern(this.#dotSim.step(d.state, c, 0, true))
+      : this.#intern(this.#sim.step(d.state, c, 1, true))
+    d.next.set(c, n)
+    this.#size++
+    return n
   }
 }
 
@@ -452,6 +550,7 @@ export class Matcher {
   // pattern, so a string that does not have them can not match.
   #prefix: Lit[] = []
   #suffix: Lit[] = []
+  #dfa?: Dfa
   #form?: Form
 
   constructor(pattern: string, options: MatcherOptions = {}) {
@@ -506,24 +605,27 @@ export class Matcher {
     if (this.#linear) {
       return testLinear(this.#linear, s, !!this.options.dot)
     }
-    const sim = new Sim(s, this.options)
-    const { chars } = sim
+    const chars = [...s]
     if (
       !hasAffix(this.#prefix, chars, 0) ||
       !hasAffix(this.#suffix, chars, chars.length - this.#suffix.length)
     ) {
       return false
     }
-    let state = new State()
-    sim.add(state, this.#start, 0, true)
-    for (
-      let i = 0;
-      i < sim.chars.length && (state.threads.size || state.runs.length);
-      i++
-    ) {
-      state = sim.step(state, i, true)
+    if (s === '.' || s === '..') {
+      const sim = new Sim(true, false)
+      let state = new State()
+      sim.add(state, this.#start, 0, true)
+      chars.forEach((c, i) => (state = sim.step(state, c, i, true)))
+      return state.threads.has(MATCH.id)
     }
-    return state.threads.has(MATCH.id)
+    const dfa = (this.#dfa ??= new Dfa(this.#start))
+    let d = dfa.start(!this.options.dot && s.startsWith('.'))
+    for (const c of chars) {
+      if (d.dead) return false
+      d = dfa.next(d, c)
+    }
+    return d.match
   }
 
   /** a readable listing of the state machine */
