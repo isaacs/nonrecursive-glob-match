@@ -105,3 +105,8 @@ t.throws(() => new Matcher('*', { normalize: 'NFKC' }).test('a/b'))
 
 // the pattern property keeps the raw pattern
 t.equal(new Matcher(decomposed, { normalize: true }).pattern, decomposed)
+
+// chars outside the BMP are one char each, after normalization
+t.equal(new Matcher('caf?😀', { normalize: true }).test('café😀'), true)
+t.equal(new Matcher('caf??', { normalize: true }).test('café😀'), true)
+t.equal(new Matcher('caf?', { normalize: true }).test('café😀'), false)

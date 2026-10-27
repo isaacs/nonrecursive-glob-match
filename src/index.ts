@@ -650,8 +650,26 @@ const itemLengths = (it: Item): [min: number, max: number] => {
 }
 
 // true if the chars from `start` match the literals
-const hasAffix = (lits: Lit[], chars: ArrayLike<string>, start: number) =>
-  lits.every((l, j) => litMatch(l, chars[start + j]!))
+const hasAffix = (
+  lits: Lit[],
+  chars: ArrayLike<string>,
+  start: number,
+) => {
+  for (let j = 0; j < lits.length; j++) {
+    if (!litMatch(lits[j]!, chars[start + j]!)) return false
+  }
+  return true
+}
+
+// a `/`, or half of a surrogate pair
+const slashOrSurrogate = /[/\ud800-\udfff]/
+const surrogate = /[\ud800-\udfff]/
+
+const noSlash = (s: string) => {
+  if (s.includes('/')) {
+    throw new Error('can only match a single path portion, got: ' + s)
+  }
+}
 
 export class Matcher {
   pattern: string
@@ -680,6 +698,9 @@ export class Matcher {
   // pattern, so a string that does not have them can not match.
   #prefix: Lit[] = []
   #suffix: Lit[] = []
+  // the prefix and suffix as strings, if they do not fold case
+  #prefixStr?: string
+  #suffixStr?: string
   #dfa?: Dfa
   #form?: Form
 
@@ -720,6 +741,10 @@ export class Matcher {
         if (!l) break
         this.#suffix.unshift(l)
       }
+      if (!nocase) {
+        this.#prefixStr = this.#prefix.map(l => l.ch).join('')
+        this.#suffixStr = this.#suffix.map(l => l.ch).join('')
+      }
       this.#linear = linear(this.#start)?.slice(
         this.#prefix.length,
         -this.#suffix.length || undefined,
@@ -734,25 +759,33 @@ export class Matcher {
   }
 
   test(s: string): boolean {
-    if (s.includes('/')) {
-      throw new Error('can only match a single path portion, got: ' + s)
+    // a string can be indexed by code point, unless it has surrogate
+    // pairs. The `/` check uses the string as given, so with
+    // normalization it is a separate step.
+    let chars: ArrayLike<string> = s
+    if (this.#form) {
+      noSlash(s)
+      s = s.normalize(this.#form)
+      chars = surrogate.test(s) ? [...s] : s
+    } else if (slashOrSurrogate.test(s)) {
+      noSlash(s)
+      chars = [...s]
     }
-    if (this.#form) s = s.normalize(this.#form)
     if (this.#literal !== undefined) {
       return this.#literalRe ?
           this.#literalRe.test(s)
         : s === this.#literal
     }
-    // a string can be indexed by code point, unless it has surrogate
-    // pairs
-    const chars = /[\ud800-\udfff]/.test(s) ? [...s] : s
     const prefix = this.#prefix.length
     const end = chars.length - this.#suffix.length
+    // the length check means that the prefix and suffix do not
+    // overlap
+    if (chars.length < this.#min || chars.length > this.#max) return false
     if (
-      chars.length < this.#min ||
-      chars.length > this.#max ||
-      !hasAffix(this.#prefix, chars, 0) ||
-      !hasAffix(this.#suffix, chars, end)
+      this.#prefixStr !== undefined && this.#suffixStr !== undefined ?
+        !s.startsWith(this.#prefixStr) || !s.endsWith(this.#suffixStr)
+      : !hasAffix(this.#prefix, chars, 0) ||
+        !hasAffix(this.#suffix, chars, end)
     ) {
       return false
     }
