@@ -40,3 +40,8 @@ t.equal(new Matcher('@(.|!(a))*').test('.foo'), true)
 // two empty paths reach the same negation at one position
 t.equal(new Matcher('@(|)!(a)').test('a'), false)
 t.equal(new Matcher('@(|)!(a)').test('b'), true)
+
+// the negation starts at two positions, so two runs of it have
+// sub-states with the same thread count but not the same runs
+t.equal(new Matcher('?(a)!(a!(b))').test('aa'), false)
+t.equal(new Matcher('?(a)!(a!(b))').test('aab'), true)

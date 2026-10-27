@@ -42,7 +42,6 @@ export type Node =
 
 // the end of the pattern, or of a negated sub-pattern
 const MATCH: Node = { t: 'match', id: 0 }
-const MATCH_KEY = '0'
 
 const extTypes = '!?+*@'
 
@@ -240,14 +239,34 @@ const show = (start: Node): string => {
 // negated sub-pattern, started where the negation started. The
 // negation matches the chars so far if the sub-pattern does not.
 type Run = { t: 'run'; neg: NegNode; state: State }
-type Thread = Node | Run
 
-// The threads at one position in the string, keyed so that
-// identical threads merge. `seen` holds the nodes walked to get to
-// the threads, so that loops in the graph stop.
+// The threads at one position in the string. Node threads are keyed
+// by node id, and runs with the same state are only kept once, so
+// that identical threads merge.
 class State {
-  threads = new Map<string, Thread>()
-  seen = new Set<Node>()
+  threads = new Map<number, Node>()
+  runs: Run[] = []
+  // the splits and negations walked to get to the threads, so that
+  // loops in the graph stop. Most states never walk one.
+  #seen?: Set<Node>
+
+  // true the first time that a node is walked
+  visit(node: Node) {
+    if (!this.#seen) this.#seen = new Set()
+    else if (this.#seen.has(node)) return false
+    this.#seen.add(node)
+    return true
+  }
+}
+
+// true if the two states hold the same threads
+const sameState = (a: State, b: State): boolean => {
+  if (a.threads.size !== b.threads.size) return false
+  if (a.runs.length !== b.runs.length) return false
+  for (const id of a.threads.keys()) if (!b.threads.has(id)) return false
+  return a.runs.every(r =>
+    b.runs.some(o => o.neg === r.neg && sameState(o.state, r.state)),
+  )
 }
 
 class Sim {
@@ -272,13 +291,11 @@ class Sim {
   add(state: State, node: Node, i: number, top: boolean): void {
     switch (node.t) {
       case 'split':
-        if (state.seen.has(node)) return
-        state.seen.add(node)
+        if (!state.visit(node)) return
         for (const o of node.out) this.add(state, o, i, top)
         return
       case 'neg':
-        if (state.seen.has(node)) return
-        state.seen.add(node)
+        if (!state.visit(node)) return
         const sub = new State()
         this.add(sub, node.sub, i, false)
         return this.addRun(
@@ -290,20 +307,20 @@ class Sim {
       case 'star':
         // a * can not start a dotfile, even if it matches nothing
         if (this.restricted(i, top)) return
-        if (state.threads.has(String(node.id))) return
-        state.threads.set(String(node.id), node)
+        if (state.threads.has(node.id)) return
+        state.threads.set(node.id, node)
         return this.add(state, node.next, i, top)
       default:
-        state.threads.set(String(node.id), node)
+        state.threads.set(node.id, node)
     }
   }
 
   addRun(state: State, run: Run, i: number, top: boolean) {
-    const keys = [...run.state.threads.keys()].sort().join()
-    const key = `${run.neg.id}(${keys})`
-    if (state.threads.has(key)) return
-    state.threads.set(key, run)
-    if (!run.state.threads.has(MATCH_KEY)) {
+    for (const r of state.runs) {
+      if (r.neg === run.neg && sameState(r.state, run.state)) return
+    }
+    state.runs.push(run)
+    if (!run.state.threads.has(MATCH.id)) {
       this.add(state, run.neg.next, i, top)
     }
   }
@@ -328,17 +345,98 @@ class Sim {
           break
         case 'star':
           if (!this.restricted(i, top)) this.add(next, th, i + 1, top)
-          break
-        case 'run':
-          if (!this.restricted(i, top)) {
-            const state = this.step(th.state, i, false)
-            this.addRun(next, { t: 'run', neg: th.neg, state }, i + 1, top)
-          }
+      }
+    }
+    if (!this.restricted(i, top)) {
+      for (const run of state.runs) {
+        const { threads, runs } = run.state
+        // a sub-pattern with no threads can not match again, so the
+        // run stays the same
+        if (!threads.size && !runs.length) {
+          this.addRun(next, run, i + 1, top)
+          continue
+        }
+        const sub = this.step(run.state, i, false)
+        this.addRun(
+          next,
+          { t: 'run', neg: run.neg, state: sub },
+          i + 1,
+          top,
+        )
       }
     }
     return next
   }
 }
+
+// a graph with no splits or negations is a chain of nodes that
+// each match one char, or a `*`
+type LinearNode = Exclude<Node, SplitNode | NegNode | { t: 'match' }>
+
+// the nodes in order, if the graph is a single chain
+const linear = (start: Node): LinearNode[] | undefined => {
+  const nodes: LinearNode[] = []
+  for (let n = start; n.t !== 'match'; n = n.next) {
+    if (n.t === 'split' || n.t === 'neg') return undefined
+    nodes.push(n)
+  }
+  return nodes
+}
+
+// Match a chain of nodes. Each node other than `*` matches exactly
+// one char, so on a failure it is enough to go back to the last `*`
+// and let it match one more char. This takes at most
+// nodes.length * chars.length steps.
+const testLinear = (nodes: LinearNode[], s: string, dot: boolean) => {
+  const chars = [...s]
+  // `.` and `..` only match literal dots, even with `dot:true`
+  if (s === '.' || s === '..') {
+    if (nodes.some(n => n.t !== 'lit')) return false
+  } else if (!dot && s.startsWith('.') && nodes[0]?.t !== 'lit') {
+    // only a literal can match the leading dot. A `*` can not start
+    // a dotfile, even if it matches nothing.
+    return false
+  }
+  let ni = 0
+  let ci = 0
+  let starNi = -1
+  let starCi = 0
+  while (ci < chars.length) {
+    const n = nodes[ni]
+    if (n?.t === 'star') {
+      starNi = ni++
+      starCi = ci
+      continue
+    }
+    const c = chars[ci]!
+    if (
+      n &&
+      (n.t === 'any' ||
+        (n.t === 'lit' && (n.re ? n.re.test(c) : c === n.ch)) ||
+        (n.t === 'class' && n.re.test(c)))
+    ) {
+      ni++
+      ci++
+      continue
+    }
+    if (starNi === -1) return false
+    ni = starNi + 1
+    ci = ++starCi
+  }
+  while (nodes[ni]?.t === 'star') ni++
+  return ni === nodes.length
+}
+
+// a literal char, and a RegExp that folds case, if `nocase:true`
+type Lit = { ch: string; re?: RegExp }
+
+// true if the chars from `start` match the literals
+const hasAffix = (lits: Lit[], chars: string[], start: number) =>
+  start >= 0 &&
+  lits.every((l, j) => {
+    const c = chars[start + j]!
+    return l.re ? l.re.test(c) : c === l.ch
+  })
 
 export class Matcher {
   pattern: string
@@ -348,6 +446,12 @@ export class Matcher {
   // folds case, if `nocase:true`.
   #literal?: string
   #literalRe?: RegExp
+  #linear?: LinearNode[]
+  // the literals that a match must start and end with. Each one
+  // matches exactly one char, and they are distinct items in the
+  // pattern, so a string that does not have them can not match.
+  #prefix: Lit[] = []
+  #suffix: Lit[] = []
   #form?: Form
 
   constructor(pattern: string, options: MatcherOptions = {}) {
@@ -370,6 +474,22 @@ export class Matcher {
     if (items!.every(it => it.t === 'lit')) {
       this.#literal = items!.map(it => it.ch).join('')
       if (nocase) this.#literalRe = foldRe(this.#literal)
+    } else {
+      this.#linear = linear(this.#start)
+      const lit = (it: Item): Lit | undefined =>
+        it.t !== 'lit' ? undefined
+        : nocase ? { ch: it.ch, re: foldRe(it.ch) }
+        : { ch: it.ch }
+      for (const it of items!) {
+        const l = lit(it)
+        if (!l) break
+        this.#prefix.push(l)
+      }
+      for (let j = items!.length - 1; j >= 0; j--) {
+        const l = lit(items![j]!)
+        if (!l) break
+        this.#suffix.unshift(l)
+      }
     }
   }
 
@@ -383,13 +503,27 @@ export class Matcher {
           this.#literalRe.test(s)
         : s === this.#literal
     }
+    if (this.#linear) {
+      return testLinear(this.#linear, s, !!this.options.dot)
+    }
     const sim = new Sim(s, this.options)
+    const { chars } = sim
+    if (
+      !hasAffix(this.#prefix, chars, 0) ||
+      !hasAffix(this.#suffix, chars, chars.length - this.#suffix.length)
+    ) {
+      return false
+    }
     let state = new State()
     sim.add(state, this.#start, 0, true)
-    for (let i = 0; i < sim.chars.length && state.threads.size; i++) {
+    for (
+      let i = 0;
+      i < sim.chars.length && (state.threads.size || state.runs.length);
+      i++
+    ) {
       state = sim.step(state, i, true)
     }
-    return state.threads.has(MATCH_KEY)
+    return state.threads.has(MATCH.id)
   }
 
   /** a readable listing of the state machine */

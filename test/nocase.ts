@@ -119,3 +119,9 @@ t.equal(new Matcher('[!😀]').test('😀'), false)
 t.equal(new Matcher('[!😀]').test('😁'), true)
 t.equal(new Matcher('[😀-]').test('-'), true)
 t.equal(new Matcher('[-😀]').test(''), true)
+
+// literals before and after an extglob fold case
+t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('ABD'), true)
+t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('aCd'), true)
+t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('xbd'), false)
+t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('abx'), false)
