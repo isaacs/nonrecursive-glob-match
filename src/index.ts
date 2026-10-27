@@ -182,7 +182,12 @@ const normalize = (items: Item[], form: Form): Item[] => {
   return out
 }
 
-const compile = (items: Item[], nocase: boolean): Node => {
+// the start node, and the number of node ids. Ids are dense, from 0
+// for the match node.
+const compile = (
+  items: Item[],
+  nocase: boolean,
+): [start: Node, size: number] => {
   let id = 1
   const split = (out: Node[]): SplitNode => ({ t: 'split', id: id++, out })
   const seq = (items: Item[], next: Node): Node =>
@@ -213,7 +218,8 @@ const compile = (items: Item[], nocase: boolean): Node => {
     after.out.push(next, entry)
     return it.type === '*' ? after : entry
   }
-  return seq(items, MATCH)
+  const start = seq(items, MATCH)
+  return [start, id]
 }
 
 // one line per node, in the order that a walk from the start
@@ -256,44 +262,96 @@ const show = (start: Node): string => {
 // negation matches the chars so far if the sub-pattern does not.
 type Run = { t: 'run'; neg: NegNode; state: State }
 
-// The threads at one position in the string. Node threads are keyed
-// by node id, and runs with the same state are only kept once, so
-// that identical threads merge.
+// The threads at one position in the string. Each node thread is
+// only kept once, and runs with the same state are only kept once,
+// so that identical threads merge. The match node is not in
+// `threads`, because it can not step. It sets `match` instead.
 class State {
-  threads = new Map<number, Node>()
+  // set by the Sim, to mark the nodes that this state has
+  gen: number
+  threads: Node[] = []
+  match = false
   runs: Run[] = []
-  // the splits and negations walked to get to the threads, so that
-  // loops in the graph stop. Most states never walk one.
-  #seen?: Set<Node>
+  // the sorted ids of the threads, with 0 for a match, once the
+  // state is done
+  ids: number[] = []
 
-  // true the first time that a node is walked
-  visit(node: Node) {
-    if (!this.#seen) this.#seen = new Set()
-    else if (this.#seen.has(node)) return false
-    this.#seen.add(node)
-    return true
+  constructor(gen: number) {
+    this.gen = gen
+  }
+
+  // no threads, so nothing more can match
+  get dead() {
+    return !this.threads.length && !this.match && !this.runs.length
   }
 }
 
 // true if the two states hold the same threads
 const sameState = (a: State, b: State): boolean => {
-  if (a.threads.size !== b.threads.size) return false
+  if (a.ids.length !== b.ids.length) return false
   if (a.runs.length !== b.runs.length) return false
-  for (const id of a.threads.keys()) if (!b.threads.has(id)) return false
+  if (a.ids.some((id, i) => id !== b.ids[i])) return false
   return a.runs.every(r =>
     b.runs.some(o => o.neg === r.neg && sameState(o.state, r.state)),
   )
 }
+
+/**
+ * For each node id, the gen of the last state that has the node as
+ * a thread, and of the last state that walked through it. A state is
+ * built to the end before the states around it go on, and the nodes
+ * of a negated sub-pattern are only in its states (other than the
+ * match node, which is never marked). So one mark for each node is
+ * enough to know if the state being built has it. The Sims of a
+ * matcher never run at the same time, so they share one Marks.
+ */
+export type Marks = { has: Float64Array; seen: Float64Array; gen: number }
+
+const marks = (size: number): Marks => ({
+  has: new Float64Array(size),
+  seen: new Float64Array(size),
+  gen: 0,
+})
 
 class Sim {
   // `.` and `..` only match literal dots, even with `dot:true`
   dots: boolean
   // the string starts with `.`, and `dot:true` is not set
   dotStart: boolean
+  #marks: Marks
 
-  constructor(dots: boolean, dotStart: boolean) {
+  constructor(dots: boolean, dotStart: boolean, marks: Marks) {
     this.dots = dots
     this.dotStart = dotStart
+    this.#marks = marks
+  }
+
+  state() {
+    return new State(++this.#marks.gen)
+  }
+
+  // sort the ids of a state, once it has all of its threads
+  done(state: State) {
+    state.ids = state.threads.map(n => n.id).sort((a, b) => a - b)
+    if (state.match) state.ids.unshift(MATCH.id)
+    return state
+  }
+
+  // true the first time that the state walks through the node, so
+  // that loops in the graph stop
+  #visit(state: State, node: Node) {
+    const { seen } = this.#marks
+    if (seen[node.id] === state.gen) return false
+    seen[node.id] = state.gen
+    return true
+  }
+
+  #addThread(state: State, node: Node) {
+    const { has } = this.#marks
+    if (has[node.id] === state.gen) return false
+    has[node.id] = state.gen
+    state.threads.push(node)
+    return true
   }
 
   // wildcards only match a leading dot if `dot:true`. In a negated
@@ -306,13 +364,14 @@ class Sim {
   add(state: State, node: Node, i: number, top: boolean): void {
     switch (node.t) {
       case 'split':
-        if (!state.visit(node)) return
+        if (!this.#visit(state, node)) return
         for (const o of node.out) this.add(state, o, i, top)
         return
       case 'neg':
-        if (!state.visit(node)) return
-        const sub = new State()
+        if (!this.#visit(state, node)) return
+        const sub = this.state()
         this.add(sub, node.sub, i, false)
+        this.done(sub)
         return this.addRun(
           state,
           { t: 'run', neg: node, state: sub },
@@ -322,11 +381,14 @@ class Sim {
       case 'star':
         // a * can not start a dotfile, even if it matches nothing
         if (this.restricted(i, top)) return
-        if (state.threads.has(node.id)) return
-        state.threads.set(node.id, node)
-        return this.add(state, node.next, i, top)
+        if (this.#addThread(state, node))
+          this.add(state, node.next, i, top)
+        return
+      case 'match':
+        state.match = true
+        return
       default:
-        state.threads.set(node.id, node)
+        this.#addThread(state, node)
     }
   }
 
@@ -335,15 +397,15 @@ class Sim {
       if (r.neg === run.neg && sameState(r.state, run.state)) return
     }
     state.runs.push(run)
-    if (!run.state.threads.has(MATCH.id)) {
+    if (!run.state.match) {
       this.add(state, run.neg.next, i, top)
     }
   }
 
   // the threads after char `c`, at index `i`
   step(state: State, c: string, i: number, top: boolean): State {
-    const next = new State()
-    for (const th of state.threads.values()) {
+    const next = this.state()
+    for (const th of state.threads) {
       switch (th.t) {
         case 'lit':
           if (litMatch(th, c)) {
@@ -364,10 +426,9 @@ class Sim {
     }
     if (!this.restricted(i, top)) {
       for (const run of state.runs) {
-        const { threads, runs } = run.state
         // a sub-pattern with no threads can not match again, so the
         // run stays the same
-        if (!threads.size && !runs.length) {
+        if (run.state.dead) {
           this.addRun(next, run, i + 1, top)
           continue
         }
@@ -380,14 +441,14 @@ class Sim {
         )
       }
     }
-    return next
+    return this.done(next)
   }
 }
 
 // A canonical key for the threads in a state. States with the same
 // key hold the same threads, so they match the same strings.
 const stateKey = (state: State): string => {
-  const ids = [...state.threads.keys()].sort((a, b) => a - b).join()
+  const ids = state.ids.join()
   if (!state.runs.length) return ids
   const runs = state.runs.map(r => `${r.neg.id}(${stateKey(r.state)})`)
   return `${ids}|${runs.sort().join('|')}`
@@ -425,18 +486,20 @@ class Dfa {
   #size = 0
   #plain?: DState
   #dotStart?: DState
-  #sim = new Sim(false, false)
-  #dotSim = new Sim(false, true)
+  #sim: Sim
+  #dotSim: Sim
 
-  constructor(start: Node) {
+  constructor(start: Node, marks: Marks) {
     this.#start = start
+    this.#sim = new Sim(false, false, marks)
+    this.#dotSim = new Sim(false, true, marks)
   }
 
   #make(state: State): DState {
     return {
       state,
-      match: state.threads.has(MATCH.id),
-      dead: !state.threads.size && !state.runs.length,
+      match: state.match,
+      dead: state.dead,
       next: new Map(),
     }
   }
@@ -462,14 +525,14 @@ class Dfa {
   start(dotStart: boolean): DState {
     if (dotStart) {
       if (this.#dotStart) return this.#dotStart
-      const state = new State()
+      const state = this.#dotSim.state()
       this.#dotSim.add(state, this.#start, 0, true)
-      return (this.#dotStart = this.#make(state))
+      return (this.#dotStart = this.#make(this.#dotSim.done(state)))
     }
     if (this.#plain) return this.#plain
-    const state = new State()
+    const state = this.#sim.state()
     this.#sim.add(state, this.#start, 0, true)
-    return (this.#plain = this.#intern(state))
+    return (this.#plain = this.#intern(this.#sim.done(state)))
   }
 
   // the next state, after a miss in `d.ascii`
@@ -594,6 +657,11 @@ export class Matcher {
   pattern: string
   options: MatcherOptions
   #start: Node
+  // the number of node ids
+  #size: number
+  #marks?: Marks
+  // the Sim for strings that are only `.` or `..`
+  #dotsSim?: Sim
   // the string to compare, if the pattern has no magic. The RegExp
   // folds case, if `nocase:true`.
   #literal?: string
@@ -631,7 +699,9 @@ export class Matcher {
     const toks = tokenize(pattern, nocase, noext || literal, this.#form)
     let [items] = build(toks, pair(toks), 0, toks.length, true)
     if (this.#form) items = normalize(items!, this.#form)
-    this.#start = compile(items!, nocase)
+    const [start, size] = compile(items!, nocase)
+    this.#start = start
+    this.#size = size
     if (items!.every(it => it.t === 'lit')) {
       this.#literal = items!.map(it => it.ch).join('')
       if (nocase) this.#literalRe = foldRe(this.#literal)
@@ -696,15 +766,18 @@ export class Matcher {
       return this.#wild || testLinear(this.#linear, chars, prefix, end)
     }
     if (s === '.' || s === '..') {
-      const sim = new Sim(true, false)
-      let state = new State()
-      sim.add(state, this.#start, 0, true)
+      this.#marks ??= marks(this.#size)
+      const sim = (this.#dotsSim ??= new Sim(true, false, this.#marks))
+      const start = sim.state()
+      sim.add(start, this.#start, 0, true)
+      let state = sim.done(start)
       for (let i = 0; i < chars.length; i++) {
         state = sim.step(state, chars[i]!, i, true)
       }
-      return state.threads.has(MATCH.id)
+      return state.match
     }
-    const dfa = (this.#dfa ??= new Dfa(this.#start))
+    this.#marks ??= marks(this.#size)
+    const dfa = (this.#dfa ??= new Dfa(this.#start, this.#marks))
     let d = dfa.start(dotStart)
     for (let i = 0; i < chars.length; i++) {
       if (d.dead) return false
