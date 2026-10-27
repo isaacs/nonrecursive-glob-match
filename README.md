@@ -21,6 +21,12 @@ The pattern and the tested string must be a single path portion.
 If either one contains a `/` character, the matcher throws an
 error.
 
+If you already split a path on `/`, use `m.testUnchecked(s)`. It
+gives the same result as `m.test(s)`, but it does not check `s`
+for a `/` character. This can make it faster, because some
+patterns, such as `*.js`, then do not need to look at each
+character. If `s` has a `/`, the result is not defined.
+
 ## Why
 
 Patterns like this frustrate most glob matchers: `a*a*a*a*a*a*a`.

@@ -665,6 +665,11 @@ const hasAffix = (
 const slashOrSurrogate = /[/\ud800-\udfff]/
 const surrogate = /[\ud800-\udfff]/
 
+// a string can be indexed by code point, unless it has surrogate
+// pairs
+const codePoints = (s: string): ArrayLike<string> =>
+  surrogate.test(s) ? [...s] : s
+
 const noSlash = (s: string) => {
   if (s.includes('/')) {
     throw new Error('can only match a single path portion, got: ' + s)
@@ -701,6 +706,8 @@ export class Matcher {
   // the prefix and suffix as strings, if they do not fold case
   #prefixStr?: string
   #suffixStr?: string
+  // there is a prefix or suffix to check
+  #affix = false
   #dfa?: Dfa
   #form?: Form
 
@@ -741,6 +748,7 @@ export class Matcher {
         if (!l) break
         this.#suffix.unshift(l)
       }
+      this.#affix = !!(this.#prefix.length || this.#suffix.length)
       if (!nocase) {
         this.#prefixStr = this.#prefix.map(l => l.ch).join('')
         this.#suffixStr = this.#suffix.map(l => l.ch).join('')
@@ -759,35 +767,77 @@ export class Matcher {
   }
 
   test(s: string): boolean {
-    // a string can be indexed by code point, unless it has surrogate
-    // pairs. The `/` check uses the string as given, so with
-    // normalization it is a separate step.
-    let chars: ArrayLike<string> = s
+    // The `/` check uses the string as given, so with normalization it
+    // is a separate step. Otherwise, one scan finds both a `/` and the
+    // surrogate pairs that stop the string being indexed by code point.
     if (this.#form) {
       noSlash(s)
-      s = s.normalize(this.#form)
-      chars = surrogate.test(s) ? [...s] : s
-    } else if (slashOrSurrogate.test(s)) {
-      noSlash(s)
-      chars = [...s]
+      return this.#test(s.normalize(this.#form))
     }
+    if (slashOrSurrogate.test(s)) {
+      noSlash(s)
+      return this.#test(s, [...s])
+    }
+    return this.#test(s, s)
+  }
+
+  /**
+   * The same as {@link Matcher#test}, but the string is not checked
+   * for `/` chars, so the result for a string that has one is not
+   * defined. Only use it for a string that is known to be one path
+   * portion, such as a part of a path that was split on `/`. It can
+   * be faster, because some patterns do not need to look at each char
+   * of the string.
+   */
+  testUnchecked(s: string): boolean {
+    return this.#test(this.#form ? s.normalize(this.#form) : s)
+  }
+
+  // Test a string that has no `/`. `chars` indexes it by code point.
+  // If it is not given, it is only found if a step needs it.
+  #test(s: string, chars?: ArrayLike<string>): boolean {
     if (this.#literal !== undefined) {
       return this.#literalRe ?
           this.#literalRe.test(s)
         : s === this.#literal
     }
-    const prefix = this.#prefix.length
-    const end = chars.length - this.#suffix.length
     // the length check means that the prefix and suffix do not
-    // overlap
-    if (chars.length < this.#min || chars.length > this.#max) return false
+    // overlap. Without the chars, the length in code points is from
+    // half of the UTF-16 length (if each one is a surrogate pair) to
+    // all of it, which is often enough to know.
+    const min = this.#min
+    const max = this.#max
+    if (chars === undefined) {
+      const most = s.length
+      const least = (most + 1) >> 1
+      if (most < min || least > max) return false
+      if (least < min || most > max) chars = codePoints(s)
+    }
     if (
-      this.#prefixStr !== undefined && this.#suffixStr !== undefined ?
-        !s.startsWith(this.#prefixStr) || !s.endsWith(this.#suffixStr)
-      : !hasAffix(this.#prefix, chars, 0) ||
-        !hasAffix(this.#suffix, chars, end)
+      chars !== undefined &&
+      (chars.length < min || chars.length > max)
     ) {
       return false
+    }
+    const prefix = this.#prefix.length
+    if (this.#affix) {
+      if (this.#prefixStr !== undefined && this.#suffixStr !== undefined) {
+        if (
+          !s.startsWith(this.#prefixStr) ||
+          !s.endsWith(this.#suffixStr)
+        ) {
+          return false
+        }
+      } else {
+        chars ??= codePoints(s)
+        const end = chars.length - this.#suffix.length
+        if (
+          !hasAffix(this.#prefix, chars, 0) ||
+          !hasAffix(this.#suffix, chars, end)
+        ) {
+          return false
+        }
+      }
     }
     const dotStart = !this.options.dot && s.startsWith('.')
     if (this.#linear) {
@@ -796,8 +846,12 @@ export class Matcher {
       // only a literal can match the leading dot. A `*` can not
       // start a dotfile, even if it matches nothing.
       if (dotStart && !prefix) return false
-      return this.#wild || testLinear(this.#linear, chars, prefix, end)
+      if (this.#wild) return true
+      chars ??= codePoints(s)
+      const end = chars.length - this.#suffix.length
+      return testLinear(this.#linear, chars, prefix, end)
     }
+    chars ??= codePoints(s)
     if (s === '.' || s === '..') {
       this.#marks ??= marks(this.#size)
       const sim = (this.#dotsSim ??= new Sim(true, false, this.#marks))
@@ -812,10 +866,13 @@ export class Matcher {
     this.#marks ??= marks(this.#size)
     const dfa = (this.#dfa ??= new Dfa(this.#start, this.#marks))
     let d = dfa.start(dotStart)
+    // read char codes from the string, so that a one-char string is
+    // only made for a cache miss
+    const str = chars === s
     for (let i = 0; i < chars.length; i++) {
       if (d.dead) return false
-      const c = chars[i]!
-      d = d.ascii?.[c.charCodeAt(0)] ?? dfa.next(d, c)
+      const code = str ? s.charCodeAt(i) : chars[i]!.charCodeAt(0)
+      d = d.ascii?.[code] ?? dfa.next(d, chars[i]!)
     }
     return d.match
   }
