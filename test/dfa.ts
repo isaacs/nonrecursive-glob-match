@@ -35,3 +35,14 @@ t.test('dotfile start state', t => {
   t.equal(d.test('a.js'), true)
   t.end()
 })
+
+// chars that are not ASCII use the same cached states
+t.test('non-ASCII chars', t => {
+  const m = new Matcher('@(*é)')
+  t.equal(m.test('aé'), true)
+  t.equal(m.test('bé'), true)
+  t.equal(m.test('éb'), false)
+  t.equal(m.test('é😀é'), true)
+  t.equal(m.test('é😀'), false)
+  t.end()
+})

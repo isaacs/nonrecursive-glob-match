@@ -384,6 +384,9 @@ type DState = {
   match: boolean
   // no threads, so nothing more can match
   dead: boolean
+  // the next state for each ASCII char, by char code, and for the
+  // other chars
+  ascii?: (DState | undefined)[]
   next: Map<string, DState>
 }
 
@@ -453,15 +456,25 @@ class Dfa {
     return (this.#plain = this.#intern(state))
   }
 
+  // the next state, after a miss in `d.ascii`
   next(d: DState, c: string): DState {
-    const found = d.next.get(c)
+    const code = c.charCodeAt(0)
+    const found = code < 128 ? undefined : d.next.get(c)
     if (found) return found
     // the dotfile start is not in the cache, so it is never shared
     const n =
       d === this.#dotStart ?
         this.#intern(this.#dotSim.step(d.state, c, 0, true))
       : this.#intern(this.#sim.step(d.state, c, 1, true))
-    d.next.set(c, n)
+    if (code < 128) {
+      if (!d.ascii) {
+        d.ascii = new Array(128)
+        this.#size += 128
+      }
+      d.ascii[code] = n
+    } else {
+      d.next.set(c, n)
+    }
     this.#size++
     return n
   }
@@ -485,21 +498,17 @@ const linear = (start: Node): LinearNode[] | undefined => {
 // one char, so on a failure it is enough to go back to the last `*`
 // and let it match one more char. This takes at most
 // nodes.length * chars.length steps.
-const testLinear = (nodes: LinearNode[], s: string, dot: boolean) => {
-  const chars = [...s]
-  // `.` and `..` only match literal dots, even with `dot:true`
-  if (s === '.' || s === '..') {
-    if (nodes.some(n => n.t !== 'lit')) return false
-  } else if (!dot && s.startsWith('.') && nodes[0]?.t !== 'lit') {
-    // only a literal can match the leading dot. A `*` can not start
-    // a dotfile, even if it matches nothing.
-    return false
-  }
+const testLinear = (
+  nodes: LinearNode[],
+  chars: ArrayLike<string>,
+  start: number,
+  end: number,
+) => {
   let ni = 0
-  let ci = 0
+  let ci = start
   let starNi = -1
   let starCi = 0
-  while (ci < chars.length) {
+  while (ci < end) {
     const n = nodes[ni]
     if (n?.t === 'star') {
       starNi = ni++
@@ -529,8 +538,7 @@ const testLinear = (nodes: LinearNode[], s: string, dot: boolean) => {
 type Lit = { ch: string; re?: RegExp }
 
 // true if the chars from `start` match the literals
-const hasAffix = (lits: Lit[], chars: string[], start: number) =>
-  start >= 0 &&
+const hasAffix = (lits: Lit[], chars: ArrayLike<string>, start: number) =>
   lits.every((l, j) => {
     const c = chars[start + j]!
     return l.re ? l.re.test(c) : c === l.ch
@@ -544,6 +552,8 @@ export class Matcher {
   // folds case, if `nocase:true`.
   #literal?: string
   #literalRe?: RegExp
+  // the nodes between the prefix and suffix, if the graph is a
+  // single chain
   #linear?: LinearNode[]
   // the literals that a match must start and end with. Each one
   // matches exactly one char, and they are distinct items in the
@@ -574,7 +584,6 @@ export class Matcher {
       this.#literal = items!.map(it => it.ch).join('')
       if (nocase) this.#literalRe = foldRe(this.#literal)
     } else {
-      this.#linear = linear(this.#start)
       const lit = (it: Item): Lit | undefined =>
         it.t !== 'lit' ? undefined
         : nocase ? { ch: it.ch, re: foldRe(it.ch) }
@@ -589,6 +598,10 @@ export class Matcher {
         if (!l) break
         this.#suffix.unshift(l)
       }
+      this.#linear = linear(this.#start)?.slice(
+        this.#prefix.length,
+        -this.#suffix.length || undefined,
+      )
     }
   }
 
@@ -602,28 +615,42 @@ export class Matcher {
           this.#literalRe.test(s)
         : s === this.#literal
     }
-    if (this.#linear) {
-      return testLinear(this.#linear, s, !!this.options.dot)
-    }
-    const chars = [...s]
+    // a string can be indexed by code point, unless it has surrogate
+    // pairs
+    const chars = /[\ud800-\udfff]/.test(s) ? [...s] : s
+    const prefix = this.#prefix.length
+    const end = chars.length - this.#suffix.length
     if (
+      end < prefix ||
       !hasAffix(this.#prefix, chars, 0) ||
-      !hasAffix(this.#suffix, chars, chars.length - this.#suffix.length)
+      !hasAffix(this.#suffix, chars, end)
     ) {
       return false
+    }
+    const dotStart = !this.options.dot && s.startsWith('.')
+    if (this.#linear) {
+      // `.` and `..` only match literal dots, even with `dot:true`
+      if (s === '.' || s === '..') return false
+      // only a literal can match the leading dot. A `*` can not
+      // start a dotfile, even if it matches nothing.
+      if (dotStart && !prefix) return false
+      return testLinear(this.#linear, chars, prefix, end)
     }
     if (s === '.' || s === '..') {
       const sim = new Sim(true, false)
       let state = new State()
       sim.add(state, this.#start, 0, true)
-      chars.forEach((c, i) => (state = sim.step(state, c, i, true)))
+      for (let i = 0; i < chars.length; i++) {
+        state = sim.step(state, chars[i]!, i, true)
+      }
       return state.threads.has(MATCH.id)
     }
     const dfa = (this.#dfa ??= new Dfa(this.#start))
-    let d = dfa.start(!this.options.dot && s.startsWith('.'))
-    for (const c of chars) {
+    let d = dfa.start(dotStart)
+    for (let i = 0; i < chars.length; i++) {
       if (d.dead) return false
-      d = dfa.next(d, c)
+      const c = chars[i]!
+      d = d.ascii?.[c.charCodeAt(0)] ?? dfa.next(d, c)
     }
     return d.match
   }

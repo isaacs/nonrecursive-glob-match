@@ -125,3 +125,8 @@ t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('ABD'), true)
 t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('aCd'), true)
 t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('xbd'), false)
 t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('abx'), false)
+
+// literals between wildcards fold case
+t.equal(new Matcher('*b*', { nocase: true }).test('aBc'), true)
+t.equal(new Matcher('*Σ?', { nocase: true }).test('ας!'), true)
+t.equal(new Matcher('*b*', { nocase: true }).test('axc'), false)
