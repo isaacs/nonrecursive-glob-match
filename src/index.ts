@@ -32,8 +32,7 @@ export type Token =
 export type NegNode = { t: 'neg'; id: number; sub: Node; next: Node }
 export type SplitNode = { t: 'split'; id: number; out: Node[] }
 export type Node =
-  // `re` folds case, if `nocase:true`
-  | { t: 'lit'; id: number; ch: string; re?: RegExp; next: Node }
+  | ({ t: 'lit'; id: number; next: Node } & Lit)
   | { t: 'any' | 'star'; id: number; next: Node }
   | { t: 'class'; id: number; re: RegExp; next: Node }
   | SplitNode
@@ -51,6 +50,23 @@ const reEscape = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 
 // a RegExp that only matches `s`, with unicode case folding
 const foldRe = (s: string) => new RegExp(`^${reEscape(s)}$`, 'iu')
+
+/**
+ * A literal char. With `nocase:true`, `re` folds case, and `ascii`
+ * holds its results for ASCII chars, by char code: 1 for a match,
+ * and 2 for not.
+ */
+export type Lit = { ch: string; re?: RegExp; ascii?: Uint8Array }
+
+const litMatch = (l: Lit, c: string) => {
+  if (c === l.ch) return true
+  if (!l.re) return false
+  const code = c.charCodeAt(0)
+  if (code >= 128) return l.re.test(c)
+  const ascii = (l.ascii ??= new Uint8Array(128))
+  ascii[code] ||= l.re.test(c) ? 1 : 2
+  return ascii[code] === 1
+}
 
 const tokenize = (
   p: string,
@@ -330,7 +346,7 @@ class Sim {
     for (const th of state.threads.values()) {
       switch (th.t) {
         case 'lit':
-          if (th.re ? th.re.test(c) : c === th.ch) {
+          if (litMatch(th, c)) {
             this.add(next, th.next, i + 1, top)
           }
           break
@@ -480,9 +496,14 @@ class Dfa {
   }
 }
 
-// a graph with no splits or negations is a chain of nodes that
-// each match one char, or a `*`
-type LinearNode = Exclude<Node, SplitNode | NegNode | { t: 'match' }>
+/**
+ * A node in a graph with no splits or negations. Such a graph is a
+ * chain of nodes that each match one char, or a `*`.
+ */
+export type LinearNode = Exclude<
+  Node,
+  SplitNode | NegNode | { t: 'match' }
+>
 
 // the nodes in order, if the graph is a single chain
 const linear = (start: Node): LinearNode[] | undefined => {
@@ -519,7 +540,7 @@ const testLinear = (
     if (
       n &&
       (n.t === 'any' ||
-        (n.t === 'lit' && (n.re ? n.re.test(c) : c === n.ch)) ||
+        (n.t === 'lit' && litMatch(n, c)) ||
         (n.t === 'class' && n.re.test(c)))
     ) {
       ni++
@@ -565,15 +586,9 @@ const itemLengths = (it: Item): [min: number, max: number] => {
   )
 }
 
-// a literal char, and a RegExp that folds case, if `nocase:true`
-type Lit = { ch: string; re?: RegExp }
-
 // true if the chars from `start` match the literals
 const hasAffix = (lits: Lit[], chars: ArrayLike<string>, start: number) =>
-  lits.every((l, j) => {
-    const c = chars[start + j]!
-    return l.re ? l.re.test(c) : c === l.ch
-  })
+  lits.every((l, j) => litMatch(l, chars[start + j]!))
 
 export class Matcher {
   pattern: string
