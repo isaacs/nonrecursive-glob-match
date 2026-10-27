@@ -150,34 +150,20 @@ character at a time.)
 
 "Negative" extglob.
 
-Previous (failed) attempt:
-
-> ```
-> --+-->+-----------+-->+------+
->   |   v           ^   |      |
->   |   +<----------+   | EVAL |-->
->   |   v           ^   |      |
->   |   +--> any -->+   +------+
->   |                      ^
->   v                      |
->   +--> e1 ----->+------->+
->   v             ^
->   +--> e2 ----->+
->   v             ^
->   +--> e3 ----->+
->   v   ...       ^
-> ```
->
-> If the EVAL node gets a match from any of the bottom
-> <code>e<i>n</i></code> subexpression inputs, then it kills the
-> corresponding match from the top `*` input.
-
 The challenge with negation is that it opens the door to a whole
 heap of edge cases. Especially, _any_ expression can be nested
 inside the negation, and it needs to match anything at all, as
 long as it _doesn't_ match one of the supplied patterns. This is
 where it gets complicated, and past attempts have run into
 problems.
+
+We handle this by starting a "Run" that technically does recurse,
+and thus can push the performance out from `O(n * m)` to
+`O(n * m * r)` where `n` is the string length, `m` is the pattern
+length, and `r` is the number of negative extglob portions it
+contains. In practice, this is limited by the pattern length, and
+still doesn't allow ReDOS-style explosive recursive backtracking,
+so this is fine.
 
 ## Unicode Normalization
 
