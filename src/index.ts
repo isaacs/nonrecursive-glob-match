@@ -534,6 +534,37 @@ const testLinear = (
   return ni === nodes.length
 }
 
+// The least and most chars that the items can match. These are only
+// bounds: a negation can match a string of any length, so it counts
+// as 0 to Infinity.
+const lengths = (items: Item[]): [min: number, max: number] => {
+  let min = 0
+  let max = 0
+  for (const it of items) {
+    const [lo, hi] = itemLengths(it)
+    min += lo
+    max += hi
+  }
+  return [min, max]
+}
+
+const itemLengths = (it: Item): [min: number, max: number] => {
+  if (it.t === 'star') return [0, Infinity]
+  if (it.t !== 'ext') return [1, 1]
+  if (it.type === '!') return [0, Infinity]
+  const alts = it.alts.map(lengths)
+  const min = Math.min(...alts.map(a => a[0]))
+  const max = Math.max(...alts.map(a => a[1]))
+  // a loop of alternatives that only match the empty string is empty
+  const loop = max === 0 ? 0 : Infinity
+  return (
+    it.type === '@' ? [min, max]
+    : it.type === '?' ? [0, max]
+    : it.type === '*' ? [0, loop]
+    : [min, loop]
+  )
+}
+
 // a literal char, and a RegExp that folds case, if `nocase:true`
 type Lit = { ch: string; re?: RegExp }
 
@@ -555,6 +586,12 @@ export class Matcher {
   // the nodes between the prefix and suffix, if the graph is a
   // single chain
   #linear?: LinearNode[]
+  // the linear nodes are only `*` and `?`, so the length bounds and
+  // the prefix and suffix decide the match
+  #wild = false
+  // the least and most chars that a match can have
+  #min = 0
+  #max = Infinity
   // the literals that a match must start and end with. Each one
   // matches exactly one char, and they are distinct items in the
   // pattern, so a string that does not have them can not match.
@@ -602,6 +639,12 @@ export class Matcher {
         this.#prefix.length,
         -this.#suffix.length || undefined,
       )
+      this.#wild = !!this.#linear?.every(
+        n => n.t === 'star' || n.t === 'any',
+      )
+      const [min, max] = lengths(items!)
+      this.#min = min
+      this.#max = max
     }
   }
 
@@ -621,7 +664,8 @@ export class Matcher {
     const prefix = this.#prefix.length
     const end = chars.length - this.#suffix.length
     if (
-      end < prefix ||
+      chars.length < this.#min ||
+      chars.length > this.#max ||
       !hasAffix(this.#prefix, chars, 0) ||
       !hasAffix(this.#suffix, chars, end)
     ) {
@@ -634,7 +678,7 @@ export class Matcher {
       // only a literal can match the leading dot. A `*` can not
       // start a dotfile, even if it matches nothing.
       if (dotStart && !prefix) return false
-      return testLinear(this.#linear, chars, prefix, end)
+      return this.#wild || testLinear(this.#linear, chars, prefix, end)
     }
     if (s === '.' || s === '..') {
       const sim = new Sim(true, false)
