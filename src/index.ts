@@ -49,7 +49,21 @@ const lit = (ch: string): Item => ({ t: 'lit', ch })
 const reEscape = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 
 // a RegExp that only matches `s`, with unicode case folding
-const foldRe = (s: string) => new RegExp(`^${reEscape(s)}$`, 'iu')
+const newFoldRe = (s: string) => new RegExp(`^${reEscape(s)}$`, 'iu')
+
+// foldRe for one literal char. The same chars are in most patterns,
+// so keep them. A RegExp without the `g` or `y` flag has no state to
+// share.
+const foldCache = new Map<string, RegExp>()
+const foldRe = (ch: string) => {
+  let re = foldCache.get(ch)
+  if (!re) {
+    re = newFoldRe(ch)
+    if (foldCache.size >= 1000) foldCache.clear()
+    foldCache.set(ch, re)
+  }
+  return re
+}
 
 /**
  * A literal char. With `nocase:true`, `re` folds case, and `ascii`
@@ -685,9 +699,11 @@ export class Matcher {
   #marks?: Marks
   // the Sim for strings that are only `.` or `..`
   #dotsSim?: Sim
-  // the string to compare, if the pattern has no magic. The RegExp
-  // folds case, if `nocase:true`.
+  // the string to compare, if the pattern has no magic. With
+  // `nocase:true`, the RegExp that folds case is made when it is
+  // first used.
   #literal?: string
+  #literalFold = false
   #literalRe?: RegExp
   // the nodes between the prefix and suffix, if the graph is a
   // single chain
@@ -732,7 +748,7 @@ export class Matcher {
     this.#size = size
     if (items!.every(it => it.t === 'lit')) {
       this.#literal = items!.map(it => it.ch).join('')
-      if (nocase) this.#literalRe = foldRe(this.#literal)
+      this.#literalFold = nocase
     } else {
       const lit = (it: Item): Lit | undefined =>
         it.t !== 'lit' ? undefined
@@ -797,8 +813,8 @@ export class Matcher {
   // If it is not given, it is only found if a step needs it.
   #test(s: string, chars?: ArrayLike<string>): boolean {
     if (this.#literal !== undefined) {
-      return this.#literalRe ?
-          this.#literalRe.test(s)
+      return this.#literalFold ?
+          (this.#literalRe ??= newFoldRe(this.#literal)).test(s)
         : s === this.#literal
     }
     // the length check means that the prefix and suffix do not

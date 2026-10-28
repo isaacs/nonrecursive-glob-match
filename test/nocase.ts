@@ -130,3 +130,15 @@ t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('abx'), false)
 t.equal(new Matcher('*b*', { nocase: true }).test('aBc'), true)
 t.equal(new Matcher('*Σ?', { nocase: true }).test('ας!'), true)
 t.equal(new Matcher('*b*', { nocase: true }).test('axc'), false)
+
+// more chars than the cache of case folds keeps
+for (let i = 0; i < 2; i++) {
+  for (let c = 0x100; c < 0x600; c++) {
+    const ch = String.fromCharCode(c)
+    const up = ch.toUpperCase()
+    const expect = new RegExp(`^\\u{${c.toString(16)}}$`, 'iu').test(up)
+    const m = new Matcher(`*${ch}`, { nocase: true })
+    if (m.test(`x${up}`) !== expect) t.fail(`folds ${ch}`)
+  }
+}
+t.pass('folds all chars')
