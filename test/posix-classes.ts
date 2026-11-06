@@ -25,3 +25,13 @@ t.test('[:punct:]', t => {
   t.equal(m.test(' '), false)
   t.end()
 })
+
+t.test('literal carets in character classes', t => {
+  const caret = new Matcher('[\\^]')
+  t.equal(caret.test('^'), true)
+  t.equal(caret.test('b'), false)
+  const afterRange = new Matcher('[z-a^]')
+  t.equal(afterRange.test('^'), true)
+  t.equal(afterRange.test('b'), false)
+  t.end()
+})

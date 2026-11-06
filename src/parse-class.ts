@@ -20,8 +20,8 @@ const posixClasses: { [k: string]: [e: string, n?: boolean] } = {
 }
 
 // only need to escape a few things inside of brace expressions
-// escapes: [ \ ] -
-const braceEscape = (s: string) => s.replace(/[[\]\\-]/g, '\\$&')
+// escapes: [ \ ] ^ -
+const braceEscape = (s: string) => s.replace(/[[\]\\^-]/g, '\\$&')
 
 export type ParseClassResult = [re: RegExp, consumed: number]
 
