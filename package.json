@@ -8,16 +8,17 @@
     "src"
   ],
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
     "prettier": "^3.9.10",
-    "tap": "^21.8.0",
     "tshy": "^4.1.3",
-    "typedoc": "^0.28.20"
+    "typedoc": "^0.28.20",
+    "ubqtest": "^0.0.16"
   },
   "scripts": {
     "format": "prettier --write .",
-    "test": "tap",
-    "snap": "tap",
+    "test": "ubq",
+    "snap": "ubq --update",
     "typedoc": "typedoc",
     "pretest": "npm run prepare",
     "presnap": "npm run prepare",

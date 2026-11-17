@@ -1,4 +1,4 @@
-import t from 'tap'
+import { assert, test } from 'ubqtest'
 import { Matcher } from '../src/index.js'
 
 // nocase uses unicode simple case folding, one code point at a
@@ -84,7 +84,9 @@ for (const [p, s, match] of cases) {
   const forms = [p, `@(${p})`]
   if ([...p].length === 1) forms.push(`[${p}]`)
   for (const f of forms) {
-    t.equal(new Matcher(f, { nocase: true }).test(s), match, `${f} ${s}`)
+    test(`${f} ${s}`, () => {
+      assert.equal(new Matcher(f, { nocase: true }).test(s), match)
+    })
   }
 }
 
@@ -97,48 +99,63 @@ for (const [p, s] of [
   ['ẞ', 'ß'],
 ]) {
   for (const f of [p!, `@(${p})`, `[${p}]`]) {
-    t.equal(new Matcher(f).test(s!), false, `${f} ${s} case sensitive`)
+    test(`${f} ${s} case sensitive`, () => {
+      assert.equal(new Matcher(f).test(s!), false)
+    })
   }
 }
 
-// ranges fold too
-t.equal(new Matcher('[a-z]', { nocase: true }).test('K'), true)
-t.equal(new Matcher('[a-z]', { nocase: true }).test('ſ'), true)
-t.equal(new Matcher('[A-Z]', { nocase: true }).test('ı'), false)
-t.equal(new Matcher('[A-Z]', { nocase: true }).test('İ'), false)
-t.equal(new Matcher('[𐐀-𐐏]', { nocase: true }).test('𐐨'), true)
-t.equal(new Matcher('[𐐀-𐐏]').test('𐐨'), false)
-t.equal(new Matcher('[^σ]', { nocase: true }).test('ς'), false)
-t.equal(new Matcher('[^σ]', { nocase: true }).test('Σ'), false)
+test('ranges fold too', () => {
+  assert.equal(new Matcher('[a-z]', { nocase: true }).test('K'), true)
+  assert.equal(new Matcher('[a-z]', { nocase: true }).test('ſ'), true)
+  assert.equal(new Matcher('[A-Z]', { nocase: true }).test('ı'), false)
+  assert.equal(new Matcher('[A-Z]', { nocase: true }).test('İ'), false)
+  assert.equal(new Matcher('[𐐀-𐐏]', { nocase: true }).test('𐐨'), true)
+  assert.equal(new Matcher('[𐐀-𐐏]').test('𐐨'), false)
+  assert.equal(new Matcher('[^σ]', { nocase: true }).test('ς'), false)
+  assert.equal(new Matcher('[^σ]', { nocase: true }).test('Σ'), false)
+})
 
-// classes read whole code points, not UTF-16 halves
-t.equal(new Matcher('[😀]').test('😀'), true)
-t.equal(new Matcher('[😀-😂]').test('😁'), true)
-t.equal(new Matcher('[😀-😂]').test('😃'), false)
-t.equal(new Matcher('[!😀]').test('😀'), false)
-t.equal(new Matcher('[!😀]').test('😁'), true)
-t.equal(new Matcher('[😀-]').test('-'), true)
-t.equal(new Matcher('[-😀]').test(''), true)
+test('classes read whole code points, not UTF-16 halves', () => {
+  assert.equal(new Matcher('[😀]').test('😀'), true)
+  assert.equal(new Matcher('[😀-😂]').test('😁'), true)
+  assert.equal(new Matcher('[😀-😂]').test('😃'), false)
+  assert.equal(new Matcher('[!😀]').test('😀'), false)
+  assert.equal(new Matcher('[!😀]').test('😁'), true)
+  assert.equal(new Matcher('[😀-]').test('-'), true)
+  assert.equal(new Matcher('[-😀]').test(''), true)
+})
 
-// literals before and after an extglob fold case
-t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('ABD'), true)
-t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('aCd'), true)
-t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('xbd'), false)
-t.equal(new Matcher('a@(b|c)d', { nocase: true }).test('abx'), false)
+test('literals before and after an extglob fold case', () => {
+  assert.equal(new Matcher('a@(b|c)d', { nocase: true }).test('ABD'), true)
+  assert.equal(new Matcher('a@(b|c)d', { nocase: true }).test('aCd'), true)
+  assert.equal(
+    new Matcher('a@(b|c)d', { nocase: true }).test('xbd'),
+    false,
+  )
+  assert.equal(
+    new Matcher('a@(b|c)d', { nocase: true }).test('abx'),
+    false,
+  )
+})
 
-// literals between wildcards fold case
-t.equal(new Matcher('*b*', { nocase: true }).test('aBc'), true)
-t.equal(new Matcher('*Σ?', { nocase: true }).test('ας!'), true)
-t.equal(new Matcher('*b*', { nocase: true }).test('axc'), false)
+test('literals between wildcards fold case', () => {
+  assert.equal(new Matcher('*b*', { nocase: true }).test('aBc'), true)
+  assert.equal(new Matcher('*Σ?', { nocase: true }).test('ας!'), true)
+  assert.equal(new Matcher('*b*', { nocase: true }).test('axc'), false)
+})
 
 // more chars than the cache of case folds keeps
-for (let i = 0; i < 2; i++) {
-  for (let c = 0x100; c < 0x600; c++) {
-    const ch = String.fromCharCode(c)
-    const up = ch.toUpperCase()
-    const expect = new RegExp(`^\\u{${c.toString(16)}}$`, 'iu').test(up)
-    const m = new Matcher(`*${ch}`, { nocase: true })
-    if (m.test(`x${up}`) !== expect) t.fail(`folds ${ch}`)
+test('folds all chars', () => {
+  const wrong: string[] = []
+  for (let i = 0; i < 2; i++) {
+    for (let c = 0x100; c < 0x600; c++) {
+      const ch = String.fromCharCode(c)
+      const up = ch.toUpperCase()
+      const expect = new RegExp(`^\\u{${c.toString(16)}}$`, 'iu').test(up)
+      const m = new Matcher(`*${ch}`, { nocase: true })
+      if (m.test(`x${up}`) !== expect) wrong.push(ch)
+    }
   }
-}
-t.pass('folds all chars')
+  assert.deepEqual(wrong, [])
+})

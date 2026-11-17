@@ -1,4 +1,4 @@
-import t from 'tap'
+import { assert, test } from 'ubqtest'
 import { Matcher } from '../src/index.js'
 
 // The cached states must give the same results as the first time.
@@ -6,7 +6,7 @@ import { Matcher } from '../src/index.js'
 // chars that are `a`, so random strings fill the cache, and it is
 // cleared many times. A string matches if the char 17 from the end
 // is `a`.
-t.test('cache that fills up', t => {
+test('cache that fills up', () => {
   const m = new Matcher('@(*a' + '?'.repeat(16) + ')')
   let seed = 1
   const rnd = () => {
@@ -18,31 +18,28 @@ t.test('cache that fills up', t => {
     const s = Array.from({ length: 500 }, rnd).join('')
     if (m.test(s) !== (s.at(-17) === 'a')) fails++
   }
-  t.equal(fails, 0)
-  t.end()
+  assert.equal(fails, 0)
 })
 
 // a dotfile starts at its own state, and the others must not
 // reuse it
-t.test('dotfile start state', t => {
+test('dotfile start state', () => {
   const m = new Matcher('@(*.js)')
-  t.equal(m.test('.a.js'), false)
-  t.equal(m.test('a.js'), true)
-  t.equal(m.test('.b.js'), false)
-  t.equal(m.test('b.js'), true)
+  assert.equal(m.test('.a.js'), false)
+  assert.equal(m.test('a.js'), true)
+  assert.equal(m.test('.b.js'), false)
+  assert.equal(m.test('b.js'), true)
   const d = new Matcher('@(*.js)', { dot: true })
-  t.equal(d.test('.a.js'), true)
-  t.equal(d.test('a.js'), true)
-  t.end()
+  assert.equal(d.test('.a.js'), true)
+  assert.equal(d.test('a.js'), true)
 })
 
 // chars that are not ASCII use the same cached states
-t.test('non-ASCII chars', t => {
+test('non-ASCII chars', () => {
   const m = new Matcher('@(*é)')
-  t.equal(m.test('aé'), true)
-  t.equal(m.test('bé'), true)
-  t.equal(m.test('éb'), false)
-  t.equal(m.test('é😀é'), true)
-  t.equal(m.test('é😀'), false)
-  t.end()
+  assert.equal(m.test('aé'), true)
+  assert.equal(m.test('bé'), true)
+  assert.equal(m.test('éb'), false)
+  assert.equal(m.test('é😀é'), true)
+  assert.equal(m.test('é😀'), false)
 })

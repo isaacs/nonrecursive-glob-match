@@ -48,11 +48,10 @@ export const parseClass = (
     return [...n].length === 1 ? n : c
   }
   const pos = position
-  /* c8 ignore start */
+  // ubq: not measured: the only caller calls it at a `[`
   if (glob.charAt(pos) !== '[') {
     throw new Error('not in a brace expression')
   }
-  /* c8 ignore stop */
   const ranges: string[] = []
   const negs: string[] = []
 

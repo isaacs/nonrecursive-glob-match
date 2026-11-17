@@ -1,4 +1,4 @@
-import t from 'tap'
+import { assert, test } from 'ubqtest'
 import { Matcher, type MatcherOptions } from '../src/index.js'
 
 const composed = 'café' // é as one code point
@@ -96,17 +96,40 @@ const cases: [p: string, s: string, o: MatcherOptions, match: boolean][] =
   ]
 
 for (const [p, s, o, match] of cases) {
-  t.equal(new Matcher(p, o).test(s), match, JSON.stringify([p, s, o]))
+  test(JSON.stringify([p, s, o]), () => {
+    assert.equal(new Matcher(p, o).test(s), match)
+  })
 }
 
 // the `/` check uses the raw strings
-t.throws(() => new Matcher('a/b', { normalize: 'NFKC' }))
-t.throws(() => new Matcher('*', { normalize: 'NFKC' }).test('a/b'))
+test('slash', () => {
+  assert.throws(() => new Matcher('a/b', { normalize: 'NFKC' }), Error)
+  assert.throws(
+    () => new Matcher('*', { normalize: 'NFKC' }).test('a/b'),
+    Error,
+  )
+})
 
 // the pattern property keeps the raw pattern
-t.equal(new Matcher(decomposed, { normalize: true }).pattern, decomposed)
+test('pattern property', () => {
+  assert.equal(
+    new Matcher(decomposed, { normalize: true }).pattern,
+    decomposed,
+  )
+})
 
 // chars outside the BMP are one char each, after normalization
-t.equal(new Matcher('caf?😀', { normalize: true }).test('café😀'), true)
-t.equal(new Matcher('caf??', { normalize: true }).test('café😀'), true)
-t.equal(new Matcher('caf?', { normalize: true }).test('café😀'), false)
+test('chars outside the BMP', () => {
+  assert.equal(
+    new Matcher('caf?😀', { normalize: true }).test('café😀'),
+    true,
+  )
+  assert.equal(
+    new Matcher('caf??', { normalize: true }).test('café😀'),
+    true,
+  )
+  assert.equal(
+    new Matcher('caf?', { normalize: true }).test('café😀'),
+    false,
+  )
+})

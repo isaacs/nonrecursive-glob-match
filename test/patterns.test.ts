@@ -1,5 +1,5 @@
 import type { MatcherOptions } from '../src/index.js'
-import t from 'tap'
+import { assert, test } from 'ubqtest'
 import { Matcher } from '../src/index.js'
 
 export let files = [
@@ -481,24 +481,32 @@ export const patterns: (
   ['+(a|.)', ['a.a', 'aa', 'aa.', '.aa']],
 ]
 
+// a pattern can be in the list more than one time
+const seen = new Map<string, number>()
 for (const c of patterns) {
   if (typeof c === 'string') {
-    t.comment(c)
+    console.log(c)
     continue
   }
   if (typeof c === 'function') {
     c()
     continue
   }
-  const [pattern, expect, matcherOptions, f = files, testOptions = {}] = c
-  t.test(pattern, testOptions, t => {
+  const [
+    pattern,
+    expect,
+    matcherOptions,
+    f = [...files],
+    testOptions = {},
+  ] = c
+  let name = JSON.stringify(pattern)
+  const n = (seen.get(name) ?? 0) + 1
+  seen.set(name, n)
+  if (n > 1) name += ` #${n}`
+  test(name, testOptions, () => {
     const matcher = new Matcher(pattern, matcherOptions)
-    t.matchSnapshot(String(matcher), 'parsed matcher')
+    assert.snapshot(String(matcher)) // parsed matcher
     const actual: string[] = f.filter(file => matcher.test(file))
-    t.strictSame(new Set(actual), new Set(expect), {
-      pattern,
-      files,
-    })
-    t.end()
+    assert.deepEqual(new Set(actual), new Set(expect))
   })
 }

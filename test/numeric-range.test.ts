@@ -1,4 +1,4 @@
-import t from 'tap'
+import { assert, describe, test } from 'ubqtest'
 import { Matcher } from '../src/index.js'
 
 const M = '\uE000'
@@ -37,42 +37,41 @@ const cases: [lo: string, hi: string, yes: string[], no: string[]][] = [
 
 for (const [lo, hi, yes, no] of cases) {
   const m = range(lo, hi)
-  for (const s of yes) t.equal(m.test(s), true, `{${lo}..${hi}} ${s}`)
-  for (const s of no) t.equal(m.test(s), false, `{${lo}..${hi}} ${s}`)
+  for (const s of yes)
+    test(`{${lo}..${hi}} ${s}`, () => assert.equal(m.test(s), true))
+  for (const s of no)
+    test(`{${lo}..${hi}} ${s}`, () => assert.equal(m.test(s), false))
 }
 
-t.test('with other pattern parts', t => {
+test('with other pattern parts', () => {
   const m = range('0', '999', 'file-', '.@(txt|md)')
-  t.equal(m.test('file-0.txt'), true)
-  t.equal(m.test('file-999.md'), true)
-  t.equal(m.test('file-1000.txt'), false)
-  t.equal(m.test('file-.txt'), false)
+  assert.equal(m.test('file-0.txt'), true)
+  assert.equal(m.test('file-999.md'), true)
+  assert.equal(m.test('file-1000.txt'), false)
+  assert.equal(m.test('file-.txt'), false)
   // * can take the leading digits
-  t.equal(range('0', '9', '*').test('x1234'), true)
-  t.equal(range('10', '99', '*').test('x5'), false)
-  t.equal(
+  assert.equal(range('0', '9', '*').test('x1234'), true)
+  assert.equal(range('10', '99', '*').test('x5'), false)
+  assert.equal(
     new Matcher(`@(a|${M}1..99${M})`, { rangeMark: M }).test('42'),
     true,
   )
-  t.end()
 })
 
-t.test('a \\ before the mark does not change it', t => {
+test('a \\ before the mark does not change it', () => {
   const m = new Matcher(`\\${M}1..300${M}`, { rangeMark: M })
-  t.equal(m.test('250'), true)
-  t.equal(m.test(`${M}1..300${M}`), false)
-  t.end()
+  assert.equal(m.test('250'), true)
+  assert.equal(m.test(`${M}1..300${M}`), false)
 })
 
-t.test('with noext and nocase', t => {
-  t.equal(range('1', '300', 'A').test('a20'), false)
+test('with noext and nocase', () => {
+  assert.equal(range('1', '300', 'A').test('a20'), false)
   const opts = { rangeMark: M, noext: true, nocase: true }
   const m = new Matcher(`A${M}1..300${M}`, opts)
-  t.equal(m.test('a20'), true)
-  t.end()
+  assert.equal(m.test('a20'), true)
 })
 
-t.test('a mark without a valid range is a literal', t => {
+describe('a mark without a valid range is a literal', () => {
   for (const body of [
     '1..',
     'a..b',
@@ -80,11 +79,15 @@ t.test('a mark without a valid range is a literal', t => {
     '1.2',
     '9007199254740992..1',
   ]) {
-    const p = `${M}${body}${M}`
-    t.equal(new Matcher(p, { rangeMark: M }).test(p), true, body)
+    test(body, () => {
+      const p = `${M}${body}${M}`
+      assert.equal(new Matcher(p, { rangeMark: M }).test(p), true)
+    })
   }
+})
+
+test('an open mark, or no rangeMark, is a literal', () => {
   const open = `x${M}1..300`
-  t.equal(new Matcher(open, { rangeMark: M }).test(open), true)
-  t.equal(new Matcher(`${M}1..3${M}`).test('2'), false, 'no rangeMark')
-  t.end()
+  assert.equal(new Matcher(open, { rangeMark: M }).test(open), true)
+  assert.equal(new Matcher(`${M}1..3${M}`).test('2'), false) // no rangeMark
 })

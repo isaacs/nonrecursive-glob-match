@@ -1,4 +1,4 @@
-import t from 'tap'
+import { assert, test } from 'ubqtest'
 import { Matcher, type MatcherOptions } from '../src/index.js'
 
 // testUnchecked() only finds the code points of a string when a step
@@ -56,7 +56,9 @@ for (const o of options) {
   for (const p of patterns) {
     const m = new Matcher(p, o)
     for (const s of strings) {
-      t.equal(m.testUnchecked(s), m.test(s), JSON.stringify([p, s, o]))
+      test(JSON.stringify([p, s, o]), () => {
+        assert.equal(m.testUnchecked(s), m.test(s))
+      })
     }
   }
 }
