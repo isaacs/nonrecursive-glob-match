@@ -13,7 +13,7 @@
     "prettier": "^3.9.10",
     "tshy": "^4.1.4",
     "typedoc": "^0.28.20",
-    "ubqtest": "^0.0.16"
+    "ubqtest": "^0.0.26"
   },
   "scripts": {
     "format": "prettier --write .",
