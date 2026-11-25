@@ -485,7 +485,7 @@ export const patterns: (
 const seen = new Map<string, number>()
 for (const c of patterns) {
   if (typeof c === 'string') {
-    console.log(c)
+    // console.log(c)
     continue
   }
   if (typeof c === 'function') {
